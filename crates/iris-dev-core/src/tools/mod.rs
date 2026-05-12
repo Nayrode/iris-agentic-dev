@@ -1298,6 +1298,7 @@ pub struct IrisTools {
     pub log_store: Arc<std::sync::Mutex<log_store::LogStore>>,
     /// Active toolset — controls which tools are registered.
     pub toolset: Toolset,
+    #[allow(dead_code)] // used by #[tool_router] macro-generated code
     tool_router: ToolRouter<IrisTools>,
 }
 
