@@ -74,6 +74,19 @@ pub enum DiscoverySource {
     ExplicitFlag,
 }
 
+/// Structured result from a document compile operation.
+#[derive(Debug)]
+pub struct CompileResult {
+    pub errors: Vec<String>,
+    pub console: Vec<String>,
+}
+
+impl CompileResult {
+    pub fn success(&self) -> bool {
+        self.errors.is_empty()
+    }
+}
+
 impl IrisConnection {
     pub fn new(
         base_url: impl Into<String>,
@@ -469,6 +482,56 @@ impl IrisConnection {
             }
         }
         Ok(body)
+    }
+
+    /// Compile a document via POST /action/compile. Returns structured errors and console output.
+    /// Used by both the CLI `compile` command and the MCP `iris_compile` tool.
+    pub async fn compile_document(
+        &self,
+        doc_name: &str,
+        namespace: &str,
+        flags: &str,
+        client: &reqwest::Client,
+    ) -> anyhow::Result<CompileResult> {
+        let compile_url = self.versioned_ns_url(
+            namespace,
+            &format!("/action/compile?flags={}", urlencoding::encode(flags)),
+        );
+        let resp = client
+            .post(&compile_url)
+            .basic_auth(&self.username, Some(&self.password))
+            .json(&serde_json::json!([doc_name]))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("compile HTTP {}", resp.status());
+        }
+        let body: serde_json::Value = resp.json().await.unwrap_or_default();
+        let console: Vec<String> = body["console"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut errors: Vec<String> = vec![];
+        if let Some(se) = body["status"]["errors"].as_array() {
+            for e in se {
+                if let Some(msg) = e["error"].as_str() {
+                    errors.push(msg.to_string());
+                }
+            }
+        }
+        for line in &console {
+            if let Some(rest) = line.trim().strip_prefix("ERROR ") {
+                let rest = rest.to_string();
+                if errors.iter().all(|e| !e.contains(&rest)) {
+                    errors.push(rest);
+                }
+            }
+        }
+        Ok(CompileResult { errors, console })
     }
 
     /// Build a reqwest Client suitable for Atelier REST calls.

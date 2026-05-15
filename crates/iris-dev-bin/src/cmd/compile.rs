@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Args;
+use iris_dev_core::iris::connection::CompileResult;
 use iris_dev_core::iris::{
     connection::{DiscoverySource, IrisConnection},
     discovery::{discover_iris, IrisDiscovery},
@@ -65,40 +66,28 @@ impl CompileCommand {
         let client = IrisConnection::http_client()?;
         let target = self.target.as_deref().unwrap_or(".");
 
-        let code = if target == "." {
-            // Bug 1: CompileAll takes flags, not namespace. The namespace is selected by execute().
-            format!(
-                "Set sc=$SYSTEM.OBJ.CompileAll(\"{}\") If $System.Status.IsOK(sc) {{Write \"OK\"}} Else {{Write $System.Status.GetErrorText(sc)}}",
-                self.flags
-            )
-        } else if target.ends_with(".cls") {
+        // ── .cls file: upload via Atelier PUT then compile via /action/compile ──
+        if target.ends_with(".cls") {
             let cls_text =
                 std::fs::read_to_string(target).with_context(|| format!("reading {}", target))?;
-            // Bug 2: derive class name from the "Class ..." declaration inside the file,
-            // not from the file path (which would strip package components).
             let cls_name = cls_text
                 .lines()
                 .find(|l| l.trim_start().starts_with("Class "))
                 .and_then(|l| l.split_whitespace().nth(1))
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| {
-                    // Fallback: convert path separators to dots and strip extension
                     target
                         .trim_end_matches(".cls")
                         .replace(['/', '\\'], ".")
                         .trim_start_matches('.')
                         .to_string()
                 });
-            // FR-017/Mo3: use parameterized placeholders for both cls_name and cls_text.
-            // Upload via Atelier PUT /doc/<name> then compile via ObjectScript.
-            // This avoids the broken SELECT $SYSTEM.* approach (#53) and works
-            // across all IRIS builds and web gateway configurations.
+            let doc_name = format!("{}.cls", cls_name);
+
+            // Upload
             let put_url = iris.versioned_ns_url(
                 &self.namespace,
-                &format!(
-                    "/doc/{}?ignoreConflict=1",
-                    urlencoding::encode(&format!("{}.cls", cls_name))
-                ),
+                &format!("/doc/{}?ignoreConflict=1", urlencoding::encode(&doc_name)),
             );
             let lines: Vec<&str> = cls_text.lines().collect();
             let put_resp = client
@@ -120,64 +109,75 @@ impl CompileCommand {
                     std::process::exit(1);
                 }
             }
-            format!(
-                "Set sc=$SYSTEM.OBJ.Compile(\"{}\",\"{}\") If $System.Status.IsOK(sc) {{Write \"OK\"}} Else {{Write $System.Status.GetErrorText(sc)}}",
-                cls_name, self.flags
-            )
+
+            // Compile via /action/compile (structured errors, line numbers)
+            let compile_result = iris
+                .compile_document(&doc_name, &self.namespace, &self.flags, &client)
+                .await
+                .context("compile request failed")?;
+            let result = compile_result_to_json(&compile_result, target, &self.namespace);
+            output_result(&result, &self.format);
+            if !compile_result.success() {
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
+
+        // ── non-.cls target: compile by name via /action/compile ──
+        let doc_name = if target == "." {
+            // CompileAll — use a special marker; handled below
+            target.to_string()
         } else {
-            format!(
-                "Set sc=$SYSTEM.OBJ.Compile(\"{}\",\"{}\") If $System.Status.IsOK(sc) {{Write \"OK\"}} Else {{Write $System.Status.GetErrorText(sc)}}",
-                target, self.flags
-            )
+            target.to_string()
         };
 
-        // IDEV-1: try HTTP execution first (no IRIS_CONTAINER required).
-        // Fall back to docker exec only if IRIS_CONTAINER is set to a non-empty value.
-        let exec_result = match iris
-            .execute_via_generator(&code, &self.namespace, &client)
-            .await
-        {
-            Ok(out) => Ok(out),
-            Err(_)
-                if std::env::var("IRIS_CONTAINER")
-                    .ok()
-                    .filter(|v| !v.is_empty())
-                    .is_some() =>
-            {
-                iris.execute(&code, &self.namespace).await
-            }
-            Err(e) => Err(e),
-        };
-        match exec_result {
-            Ok(out) => {
-                let out = out.trim().to_string();
-                // execute_via_generator returns the ObjectScript Write output, which may
-                // be prefixed by Atelier compile console lines (e.g. "Compilation started...
-                // Compilation finished successfully in 0.000s.\nOK"). Check for "OK" at
-                // the end, not exact equality.
-                if out.ends_with("OK") || out == "OK" {
-                    let result = serde_json::json!({"success": true, "target": target, "namespace": self.namespace, "stdout": "Compiled successfully"});
-                    output_result(&result, &self.format);
-                    Ok(())
-                } else {
-                    let result = serde_json::json!({"success": false, "error_code": "IRIS_COMPILE_FAILED", "error": out, "target": target});
-                    output_result(&result, &self.format);
-                    std::process::exit(1);
-                }
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                let ec = if msg == "DOCKER_REQUIRED" {
-                    "DOCKER_REQUIRED"
-                } else {
-                    "IRIS_UNREACHABLE"
-                };
-                let result = serde_json::json!({"success": false, "error_code": ec, "error": msg});
+        if doc_name == "." {
+            // CompileAll via ObjectScript (no Atelier endpoint for this)
+            let code = format!(
+                "Set sc=$SYSTEM.OBJ.CompileAll(\"{}\") If $System.Status.IsOK(sc) {{Write \"OK\"}} Else {{Write $System.Status.GetErrorText(sc)}}",
+                self.flags
+            );
+            let out = iris
+                .execute_via_generator(&code, &self.namespace, &client)
+                .await
+                .context("CompileAll failed")?;
+            let out = out.trim();
+            if out.ends_with("OK") || out == "OK" {
+                let result = serde_json::json!({"success": true, "target": ".", "namespace": self.namespace});
                 output_result(&result, &self.format);
-                std::process::exit(2);
+            } else {
+                let result = serde_json::json!({"success": false, "error_code": "IRIS_COMPILE_FAILED", "error": out, "target": "."});
+                output_result(&result, &self.format);
+                std::process::exit(1);
+            }
+        } else {
+            let compile_result = iris
+                .compile_document(&doc_name, &self.namespace, &self.flags, &client)
+                .await
+                .context("compile request failed")?;
+            let result = compile_result_to_json(&compile_result, target, &self.namespace);
+            output_result(&result, &self.format);
+            if !compile_result.success() {
+                std::process::exit(1);
             }
         }
+        Ok(())
     }
+}
+
+fn compile_result_to_json(r: &CompileResult, target: &str, namespace: &str) -> serde_json::Value {
+    let errors: Vec<serde_json::Value> = r
+        .errors
+        .iter()
+        .map(|e| serde_json::json!({"severity":"error","text":e}))
+        .collect();
+    serde_json::json!({
+        "success": r.success(),
+        "target": target,
+        "namespace": namespace,
+        "errors": errors,
+        "console": r.console,
+    })
 }
 
 fn output_result(result: &serde_json::Value, format: &str) {

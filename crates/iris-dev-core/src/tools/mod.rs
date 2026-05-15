@@ -1771,42 +1771,23 @@ impl IrisTools {
                         return err_json("UPLOAD_FAILED", msg);
                     }
                 }
-                // Compile the uploaded document
+                // Compile via shared compile_document helper
                 let local_src = p.target.clone();
-                let compile_url = iris.versioned_ns_url(
-                    &p.namespace,
-                    &format!("/action/compile?flags={}", urlencoding::encode(&p.flags)),
-                );
-                let resp = client
-                    .post(&compile_url)
-                    .basic_auth(&iris.username, Some(&iris.password))
-                    .json(&serde_json::json!([doc_name]))
-                    .send()
+                let cr = iris
+                    .compile_document(&doc_name, &p.namespace, &p.flags, client)
                     .await
-                    .map_err(|e| McpError::internal_error(format!("HTTP error: {e}"), None))?;
-                let body: serde_json::Value = resp.json().await.unwrap_or_default();
-                let console = body["console"].as_array().cloned().unwrap_or_default();
-                let mut errors = vec![];
-                if let Some(se) = body["status"]["errors"].as_array() {
-                    for e in se {
-                        let msg = e["error"].as_str().unwrap_or("Compile error");
-                        errors.push(serde_json::json!({"severity":"error","code":"","line":0,"column":0,"text":msg}));
-                    }
-                }
-                for line in &console {
-                    let text = line.as_str().unwrap_or("");
-                    if let Some(rest) = text.trim().strip_prefix("ERROR ") {
-                        if errors.iter().all(|e| {
-                            e["text"]
-                                .as_str()
-                                .map(|t| !t.contains(rest))
-                                .unwrap_or(true)
-                        }) {
-                            errors.push(serde_json::json!({"severity":"error","code":"","line":0,"column":0,"text":rest}));
-                        }
-                    }
-                }
-                let success = errors.is_empty();
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                let errors: Vec<serde_json::Value> = cr
+                    .errors
+                    .iter()
+                    .map(|e| serde_json::json!({"severity":"error","code":"","line":0,"column":0,"text":e}))
+                    .collect();
+                let console: Vec<serde_json::Value> = cr
+                    .console
+                    .iter()
+                    .map(|l| serde_json::Value::String(l.clone()))
+                    .collect();
+                let success = cr.success();
                 self.record_call("iris_compile", success);
                 return ok_json(serde_json::json!({
                     "success": success,
