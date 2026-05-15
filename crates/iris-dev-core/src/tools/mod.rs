@@ -2176,7 +2176,10 @@ impl IrisTools {
                 };
                 // Skip suite-level result lines (e.g. "MyClass\Sub FAILED") — these contain
                 // path separators and are not individual test methods.
+                // Skip if no class context (suite-level result without a class "begins" line),
+                // or if name contains path separators (suite-level lines, not method names).
                 if method_name.is_empty()
+                    || current_class.is_empty()
                     || (!method_name.starts_with("Test") && !method_name.starts_with("test"))
                     || method_name.contains('\\')
                     || method_name.contains('/')
