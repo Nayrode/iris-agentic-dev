@@ -44,9 +44,17 @@ fn test_connection_source_serializes_auto_discovered() {
 // ── T013: ConfigWatcher::new ─────────────────────────────────────────────────
 
 #[test]
-fn test_config_watcher_new_returns_none_for_nonexistent_file() {
+fn test_config_watcher_new_always_returns_some() {
+    // ConfigWatcher::new always returns Some now — it watches for newly-appearing files too.
     let result = ConfigWatcher::new(std::path::PathBuf::from("/nonexistent/path/.iris-dev.toml"));
-    assert!(result.is_none(), "should return None for nonexistent file");
+    assert!(
+        result.is_some(),
+        "should return Some even for nonexistent file (lazy watch)"
+    );
+    assert!(
+        result.unwrap().last_mtime.is_none(),
+        "last_mtime should be None when file does not exist"
+    );
 }
 
 #[test]

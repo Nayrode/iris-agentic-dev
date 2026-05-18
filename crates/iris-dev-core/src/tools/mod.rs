@@ -130,36 +130,48 @@ impl ConnectionState {
 }
 
 /// Tracks the `.iris-dev.toml` path and last-seen mtime for lazy hot-reload.
-/// Stored as `Option<ConfigWatcher>` on `IrisTools`; None when no config file exists.
+/// Always created (even when the file does not yet exist) so we detect new files appearing.
 pub struct ConfigWatcher {
     pub config_path: std::path::PathBuf,
-    pub last_mtime: std::time::SystemTime,
+    /// None when the file did not exist at last check.
+    pub last_mtime: Option<std::time::SystemTime>,
 }
 
 impl ConfigWatcher {
+    /// Always returns Some — watcher is active even before the file exists.
     pub fn new(config_path: std::path::PathBuf) -> Option<Self> {
-        let mtime = std::fs::metadata(&config_path)
+        let last_mtime = std::fs::metadata(&config_path)
             .and_then(|m| m.modified())
-            .ok()?;
+            .ok();
         Some(Self {
             config_path,
-            last_mtime: mtime,
+            last_mtime,
         })
     }
 
-    /// Returns true (and updates stored mtime) if the file has been modified since last check.
+    /// Returns true (and updates stored mtime) if the file has been created, modified,
+    /// or has appeared for the first time since last check.
     pub fn has_changed(&mut self) -> bool {
-        let Ok(meta) = std::fs::metadata(&self.config_path) else {
-            return false;
-        };
-        let Ok(mtime) = meta.modified() else {
-            return false;
-        };
-        if mtime > self.last_mtime {
-            self.last_mtime = mtime;
-            true
-        } else {
-            false
+        let current_mtime = std::fs::metadata(&self.config_path)
+            .and_then(|m| m.modified())
+            .ok();
+        match (self.last_mtime, current_mtime) {
+            // File newly appeared
+            (None, Some(mtime)) => {
+                self.last_mtime = Some(mtime);
+                true
+            }
+            // File modified
+            (Some(old), Some(new)) if new > old => {
+                self.last_mtime = Some(new);
+                true
+            }
+            // File deleted — reset so we detect re-creation
+            (Some(_), None) => {
+                self.last_mtime = None;
+                false
+            }
+            _ => false,
         }
     }
 }
@@ -4497,5 +4509,71 @@ mod tests {
         ];
         let sorted = sort_containers(containers);
         assert_eq!(sorted[0]["name"].as_str(), Some("a-iris"));
+    }
+}
+
+#[cfg(test)]
+mod config_watcher_tests {
+    use super::ConfigWatcher;
+    #[test]
+    fn test_config_watcher_detects_new_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".iris-dev.toml");
+
+        // File does not exist yet — watcher created but last_mtime is None
+        let mut watcher = ConfigWatcher::new(path.clone()).unwrap();
+        assert!(
+            watcher.last_mtime.is_none(),
+            "mtime should be None before file exists"
+        );
+        assert!(!watcher.has_changed(), "no change if file still absent");
+
+        // File appears
+        std::fs::write(&path, "[connection]\nhost = \"localhost\"\n").unwrap();
+        assert!(watcher.has_changed(), "should detect newly-created file");
+        assert!(
+            watcher.last_mtime.is_some(),
+            "mtime should be set after detection"
+        );
+        assert!(
+            !watcher.has_changed(),
+            "no change on second check after detection"
+        );
+    }
+
+    #[test]
+    fn test_config_watcher_detects_modification() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".iris-dev.toml");
+        std::fs::write(&path, "[connection]\nhost = \"localhost\"\n").unwrap();
+
+        let mut watcher = ConfigWatcher::new(path.clone()).unwrap();
+        assert!(watcher.last_mtime.is_some());
+        assert!(
+            !watcher.has_changed(),
+            "no change immediately after creation"
+        );
+
+        // Wind the stored mtime back by 2 seconds to simulate a future write being newer.
+        if let Some(ref mut mtime) = watcher.last_mtime {
+            *mtime = mtime
+                .checked_sub(std::time::Duration::from_secs(2))
+                .unwrap();
+        }
+        assert!(watcher.has_changed(), "should detect file with newer mtime");
+    }
+
+    #[test]
+    fn test_config_watcher_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".iris-dev.toml");
+        std::fs::write(&path, "[connection]\nhost = \"localhost\"\n").unwrap();
+
+        let mut watcher = ConfigWatcher::new(path.clone()).unwrap();
+        assert!(watcher.last_mtime.is_some());
+        assert!(
+            !watcher.has_changed(),
+            "no spurious change for existing file"
+        );
     }
 }
