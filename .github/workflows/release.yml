@@ -58,11 +58,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: cd vscode-iris-dev && npm ci && npm run package
+      - run: cd vscode-iris-agentic-dev && npm ci && npm run package
       - uses: actions/upload-artifact@v4
         with:
           name: vsix
-          path: vscode-iris-dev/vscode-iris-agentic-dev-*.vsix
+          path: vscode-iris-agentic-dev/vscode-iris-agentic-dev-*.vsix
 
   release:
     needs: [build, build-vsix]
