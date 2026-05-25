@@ -145,13 +145,9 @@ jobs:
         run: |
           # iris_test uses RunTest which needs pre-existing directories with .cls files
           # RunTest /load looks for .cls files in ^UnitTestRoot/PackageName/
-          docker exec iris-e2e bash -c "mkdir -p /tmp/httest/IrisDevRunTest"
-          docker exec iris-e2e bash -c "cat > /tmp/httest/IrisDevRunTest/UnitTestSuite.cls << 'CLS'
-Class IrisDevRunTest.UnitTestSuite Extends %%UnitTest.TestCase {
-Method TestAlwaysPasses() { Do \$\$\$AssertEquals(1,1) }
-Method TestAlwaysFails() { Do \$\$\$AssertEquals(1,2) }
-}
-CLS"
+          docker exec iris-e2e bash -c 'mkdir -p /tmp/httest/IrisDevRunTest'
+          # Write class file using printf to avoid YAML/heredoc quoting issues
+          docker exec iris-e2e bash -c 'printf "Class IrisDevRunTest.UnitTestSuite Extends %%UnitTest.TestCase {\nMethod TestAlwaysPasses() { Do \$\$\$AssertEquals(1,1) }\nMethod TestAlwaysFails() { Do \$\$\$AssertEquals(1,2) }\n}" > /tmp/httest/IrisDevRunTest/UnitTestSuite.cls'
           echo "Created /tmp/httest/IrisDevRunTest/UnitTestSuite.cls in iris-e2e container"
       - name: Run E2E tests against live IRIS (Rust)
         run: cargo test --test test_e2e -- --nocapture
