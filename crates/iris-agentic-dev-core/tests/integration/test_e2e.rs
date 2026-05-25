@@ -1497,8 +1497,8 @@ fn e2e_interop_production_status_structured_response() {
     // interop_production_status uses docker exec — DOCKER_REQUIRED if no container.
     // Either way must return a structured response, not crash.
     let result = call_tool(
-        "interop_production_status",
-        serde_json::json!({"namespace": "USER"}),
+        "iris_production",
+        serde_json::json!({"action": "status", "namespace": "USER"}),
     );
     assert!(
         result["success"] == true || result["success"] == false || result["error_code"].is_string(),
@@ -1519,7 +1519,7 @@ fn e2e_interop_production_status_structured_response() {
 fn e2e_interop_queues_structured_response() {
     require_iris!();
     // interop_queues queries Ens.Queue via SQL — works without docker if IRIS_HOST set.
-    let result = call_tool("interop_queues", serde_json::json!({}));
+    let result = call_tool("iris_interop_query", serde_json::json!({"what": "queues"}));
     assert!(
         result["success"] == true || result["error_code"].is_string(),
         "interop_queues must return structured response: {}",
@@ -1538,8 +1538,8 @@ fn e2e_interop_queues_structured_response() {
 fn e2e_interop_logs_structured_response() {
     require_iris!();
     let result = call_tool(
-        "interop_logs",
-        serde_json::json!({"log_type": "error,warning", "limit": 10}),
+        "iris_interop_query",
+        serde_json::json!({"what": "logs", "log_type": "error,warning", "limit": 10}),
     );
     assert!(
         result["success"] == true || result["error_code"].is_string(),
@@ -1559,7 +1559,10 @@ fn e2e_interop_logs_structured_response() {
 fn e2e_interop_message_search_structured_response() {
     require_iris!();
     // Search the message archive — returns empty array if no messages, not an error.
-    let result = call_tool("interop_message_search", serde_json::json!({"limit": 5}));
+    let result = call_tool(
+        "iris_interop_query",
+        serde_json::json!({"what": "messages", "limit": 5}),
+    );
     assert!(
         result["success"] == true || result["error_code"].is_string(),
         "interop_message_search must return structured response: {}",
@@ -2547,8 +2550,8 @@ fn e2e_interop_production_status_no_crash_without_container() {
     // Without IRIS_CONTAINER, production tools return DOCKER_REQUIRED — that's fine
     // This test verifies the error is structured, not a panic/crash
     let result = call_tool(
-        "interop_production_status",
-        serde_json::json!({"namespace":"USER"}),
+        "iris_production",
+        serde_json::json!({"action": "status", "namespace":"USER"}),
     );
     assert!(
         result["success"] == true || result["error_code"].is_string() || result.is_object(),
@@ -2560,7 +2563,7 @@ fn e2e_interop_production_status_no_crash_without_container() {
 #[test]
 fn e2e_interop_queues_count_field() {
     require_iris!();
-    let result = call_tool("interop_queues", serde_json::json!({}));
+    let result = call_tool("iris_interop_query", serde_json::json!({"what": "queues"}));
     if result["success"] == true {
         let queues = result["queues"].as_array().cloned().unwrap_or_default();
         // count field must match array length
@@ -2578,8 +2581,9 @@ fn e2e_interop_queues_count_field() {
 fn e2e_interop_logs_limit_parameter() {
     require_iris!();
     let result = call_tool(
-        "interop_logs",
+        "iris_interop_query",
         serde_json::json!({
+            "what": "logs",
             "log_type": "error,warning,info",
             "limit": 3
         }),
@@ -2597,7 +2601,10 @@ fn e2e_interop_logs_limit_parameter() {
 #[test]
 fn e2e_interop_message_search_with_limit() {
     require_iris!();
-    let result = call_tool("interop_message_search", serde_json::json!({"limit": 2}));
+    let result = call_tool(
+        "iris_interop_query",
+        serde_json::json!({"what": "messages", "limit": 2}),
+    );
     if result["success"] == true {
         let messages = result["messages"].as_array().cloned().unwrap_or_default();
         assert!(
@@ -2612,8 +2619,9 @@ fn e2e_interop_message_search_with_limit() {
 fn e2e_interop_logs_error_type_filter() {
     require_iris!();
     let result = call_tool(
-        "interop_logs",
+        "iris_interop_query",
         serde_json::json!({
+            "what": "logs",
             "log_type": "error",
             "limit": 5
         }),
