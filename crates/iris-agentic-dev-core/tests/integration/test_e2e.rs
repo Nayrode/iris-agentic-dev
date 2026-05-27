@@ -3477,7 +3477,7 @@ fn e2e_resolve_dynamic_dispatch_returns_candidates() {
     // Verify confidence matches formula
     if n == 1 {
         assert_eq!(result["confidence"], 0.90);
-    } else if n >= 2 && n <= 5 {
+    } else if (2..=5).contains(&n) {
         assert_eq!(result["confidence"], 0.75);
     }
 }

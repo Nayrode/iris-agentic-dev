@@ -489,7 +489,7 @@ if rs.%Next() {{
 
         if p.include_row_count {
             let count = get_row_count(iris, client, &p.namespace, &sql_schema, &sql_table).await;
-            obj["row_count"] = count.into();
+            obj["row_count"] = count;
         }
         obj
     } else {
@@ -510,7 +510,7 @@ if rs.%Next() {{
 
         if p.include_row_count {
             let count = get_row_count(iris, client, &p.namespace, &sql_schema, &sql_table).await;
-            obj["row_count"] = count.into();
+            obj["row_count"] = count;
         }
         obj
     };

@@ -542,8 +542,8 @@ mod tests {
     #[test]
     fn test_cache_key_sorted_bases() {
         // find_subclass sorts base_classes before building cache key
-        let mut b1 = vec!["Ens.BP".to_string(), "Ens.BO".to_string()];
-        let mut b2 = vec!["Ens.BO".to_string(), "Ens.BP".to_string()];
+        let mut b1 = ["Ens.BP".to_string(), "Ens.BO".to_string()];
+        let mut b2 = ["Ens.BO".to_string(), "Ens.BP".to_string()];
         b1.sort();
         b2.sort();
         assert_eq!(
