@@ -32,29 +32,38 @@ def compute_lift_from_scores(baseline_scores: list[dict], skill_scores: list[dic
     }
 
 
-def format_transcript(events: list[dict]) -> str:
-    """Format OpenCode event stream as a judge-compatible transcript string."""
-    lines = []
+def format_transcript(events: list[dict]) -> list[dict]:
+    """Format OpenCode event stream as a judge-compatible transcript (list of turn dicts)."""
+    turns = []
     for event in events:
         if event.get("type") == "tool_use":
             part = event["part"]
-            tool = part.get("tool", "")
             state = part.get("state", {})
-            inp = str(state.get("input", {}))[:200]
-            out = str(state.get("output", ""))[:300]
-            lines.append(f"[tool_call: {tool}]\nInput: {inp}\nOutput: {out}")
+            if state.get("status") != "completed":
+                continue
+            tool = part.get("tool", "")
+            turns.append({
+                "role": "assistant",
+                "tool_name": tool,
+                "args": state.get("input", {}),
+                "tool_result": str(state.get("output", ""))[:300],
+            })
         elif event.get("type") == "text":
             part = event["part"]
             if part.get("time", {}).get("end"):
-                lines.append(f"[response]\n{part.get('text', '')}")
-    tool_count = sum(
-        1 for e in events
-        if e.get("type") == "tool_use"
-        and e["part"].get("state", {}).get("status") == "completed"
-        and e["part"].get("tool") != "skill"
-    )
-    lines.append(f"\n[tool_call_count: {tool_count}]")
-    return "\n\n".join(lines)
+                turns.append({"role": "assistant", "text": part.get("text", "")[:500]})
+    return turns
+
+
+def _apply_global_fixture(fx: dict, iris_host: str, iris_web_port: str) -> None:
+    """Set a global subscript via Atelier execute."""
+    import requests
+    name = fx.get("name", "^BenchData").lstrip("^")
+    subscript = fx.get("subscript", "")
+    value = fx.get("value", "")
+    code = f'Set ^{name}("{subscript}") = "{value}"'
+    url = f"http://{iris_host}:{iris_web_port}/api/atelier/v1/USER/action/query"
+    requests.post(url, json={"query": f"CALL %SYSTEM.SQL.Execute('{code}')"}, auth=("_SYSTEM", "SYS"), timeout=10)
 
 
 def run_task_and_score(
@@ -72,7 +81,7 @@ def run_task_and_score(
     from tests.e2e.opencode_runner import collect_events
     from tests.e2e.fixtures import load_all_fixtures
     from tests.e2e.task_loader import HarnessFixture
-    from fire_rate import _install_skill_local
+    from tests.e2e.skill_eval.fire_rate import _install_skill_local
 
     # Ensure benchmark judge is importable
     import tests.e2e.skill_eval  # triggers sys.path shim
@@ -82,13 +91,19 @@ def run_task_and_score(
     with open(task_path) as f:
         task_dict = yaml.safe_load(f)
 
-    # Load fixtures into IRIS
-    fixtures = [
+    # Load cls fixtures into IRIS (global/routine fixtures use docker exec via benchmark harness)
+    cls_fixtures = [
         HarnessFixture(type=fx["type"], name=fx["name"], content=fx["content"])
         for fx in task_dict.get("fixtures", [])
+        if fx.get("type") == "cls" and "content" in fx
     ]
-    if fixtures:
-        load_all_fixtures(fixtures, iris_host=iris_host, iris_web_port=iris_web_port)
+    if cls_fixtures:
+        load_all_fixtures(cls_fixtures, iris_host=iris_host, iris_web_port=iris_web_port)
+
+    # Apply global fixtures via iris_execute
+    for fx in task_dict.get("fixtures", []):
+        if fx.get("type") == "global":
+            _apply_global_fixture(fx, iris_host=iris_host, iris_web_port=iris_web_port)
 
     prompt = task_dict["description"]
 
@@ -112,13 +127,14 @@ def run_task_and_score(
             )
         events = collect_events(prompt, env.env_vars(), model=model)
 
-    transcript = format_transcript(events)
-    result = {"transcript": transcript, "tool_call_count": sum(
+    turns = format_transcript(events)
+    tool_count = sum(
         1 for e in events
         if e.get("type") == "tool_use"
-        and e["part"].get("state", {}).get("status") == "completed"
-        and e["part"].get("tool") != "skill"
-    ), "path": "B"}
+        and e.get("part", {}).get("state", {}).get("status") == "completed"
+        and e.get("part", {}).get("tool") != "skill"
+    )
+    result = {"transcript": turns, "tool_call_count": tool_count, "path": "B"}
     scored = score_result(task_dict, result)
     return {**scored, "task_id": task_id, "condition": skill_name_or_none or "baseline"}
 
