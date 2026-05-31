@@ -74,6 +74,7 @@ def run_task_and_score(
     iris_host: str = "localhost",
     iris_web_port: str = "52780",
     iris_container: str = "iris-dev-iris",
+    no_mcp: bool = False,  # True = light-skills scenario, no MCP tools
 ) -> dict:
     """Run a benchmark task via OpenCode and return the judge score."""
     import yaml
@@ -113,23 +114,19 @@ def run_task_and_score(
     prompt = task_dict["description"]
 
     with IsolatedEnv(openai_api_key=openai_api_key) as env:
-        if skill_name_or_none:
-            env_with_mcp = env.with_mcp(
-                iris_host=iris_host,
-                iris_web_port=iris_web_port,
-                iris_container=iris_container,
-            )
-            try:
-                from tests.e2e.readme_validator import ReadmeValidator
-                ReadmeValidator(skills_dir=env.skills_dir).install_skill(skill_name_or_none)
-            except (ValueError, Exception):
-                _install_skill_local(skill_name_or_none, env.skills_dir)
-        else:
+        # Light-skills scenario: no MCP tools at all, skill knowledge is the only signal
+        if not no_mcp:
             env.with_mcp(
                 iris_host=iris_host,
                 iris_web_port=iris_web_port,
                 iris_container=iris_container,
             )
+        if skill_name_or_none:
+            try:
+                from tests.e2e.readme_validator import ReadmeValidator
+                ReadmeValidator(skills_dir=env.skills_dir).install_skill(skill_name_or_none)
+            except (ValueError, Exception):
+                _install_skill_local(skill_name_or_none, env.skills_dir)
         events = collect_events(prompt, env.env_vars(), model=model)
 
     # Check for tool_assertions in task — bypasses LLM judge, scores by tool calls
@@ -180,11 +177,13 @@ def measure_lift(
     for task_id in config.benchmark_tasks:
         for _ in range(n_runs):
             b = run_task_and_score(
-                task_id, None, openai_api_key, model, iris_host, iris_web_port, iris_container
+                task_id, None, openai_api_key, model, iris_host, iris_web_port, iris_container,
+                no_mcp=config.no_mcp_for_benchmark,
             )
             baseline_scores.append(b)
             s = run_task_and_score(
-                task_id, config.skill, openai_api_key, model, iris_host, iris_web_port, iris_container
+                task_id, config.skill, openai_api_key, model, iris_host, iris_web_port, iris_container,
+                no_mcp=config.no_mcp_for_benchmark,
             )
             skill_scores.append(s)
         task_ids_used.append(task_id)

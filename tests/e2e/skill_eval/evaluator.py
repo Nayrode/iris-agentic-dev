@@ -15,6 +15,7 @@ class SkillEvalConfig:
     isolation_prompt: Optional[str] = None
     targeted_tasks_dir: Optional[str] = None  # if set, look for tasks here first
     implicit_fire_rate_prompt: Optional[str] = None  # unprompted trigger test
+    no_mcp_for_benchmark: bool = False  # run benchmark tasks without MCP tools (light-skills scenario)
 
 
 @dataclasses.dataclass
@@ -59,6 +60,7 @@ def load_eval_config(skill_name: str, tasks_skills_dir: str) -> Optional[SkillEv
         isolation_prompt=data.get("isolation_prompt"),
         targeted_tasks_dir=data.get("targeted_tasks_dir"),
         implicit_fire_rate_prompt=data.get("implicit_fire_rate_prompt"),
+        no_mcp_for_benchmark=data.get("no_mcp_for_benchmark", False),
     )
 
 
