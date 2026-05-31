@@ -42,7 +42,9 @@ def test_compute_lift():
 
 def test_format_transcript_includes_tools():
     events = make_events(tool_calls=["iris_compile", "iris_execute"])
-    transcript = format_transcript(events)
-    assert "iris_compile" in transcript
-    assert "iris_execute" in transcript
-    assert "The fix is correct" in transcript
+    turns = format_transcript(events)
+    tool_names = [t.get("tool_name") for t in turns if t.get("tool_name")]
+    assert "iris_compile" in tool_names
+    assert "iris_execute" in tool_names
+    texts = [t.get("text", "") for t in turns]
+    assert any("The fix is correct" in t for t in texts)

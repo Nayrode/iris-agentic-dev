@@ -87,7 +87,12 @@ def run_task_and_score(
     import tests.e2e.skill_eval  # triggers sys.path shim
     from runner.judge import score_result
 
-    task_path = os.path.join(_BENCHMARK_TASKS_DIR, f"{task_id}.yaml")
+    # Look in targeted tasks dir first, then fall back to benchmark tasks dir
+    _TARGETED_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "tasks", "skills", "targeted")
+    )
+    targeted_path = os.path.join(_TARGETED_DIR, f"{task_id}.yaml")
+    task_path = targeted_path if os.path.exists(targeted_path) else os.path.join(_BENCHMARK_TASKS_DIR, f"{task_id}.yaml")
     with open(task_path) as f:
         task_dict = yaml.safe_load(f)
 

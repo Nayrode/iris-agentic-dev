@@ -11,9 +11,6 @@ fire_rate_prompt: |
     Return ""
   }
 benchmark_tasks:
-  - DBG-01
-  - DBG-02
-  - DBG-03
-  - MOD-01
-  - MOD-02
+  - STATUS-CHECK
 domain_skill: false
+targeted_tasks_dir: tests/e2e/tasks/skills/targeted

@@ -13,6 +13,8 @@ class SkillEvalConfig:
     benchmark_tasks: list[str]
     domain_skill: bool
     isolation_prompt: Optional[str] = None
+    targeted_tasks_dir: Optional[str] = None  # if set, look for tasks here first
+    implicit_fire_rate_prompt: Optional[str] = None  # unprompted trigger test
 
 
 @dataclasses.dataclass
@@ -54,6 +56,8 @@ def load_eval_config(skill_name: str, tasks_skills_dir: str) -> Optional[SkillEv
         benchmark_tasks=data.get("benchmark_tasks", []),
         domain_skill=data.get("domain_skill", False),
         isolation_prompt=data.get("isolation_prompt"),
+        targeted_tasks_dir=data.get("targeted_tasks_dir"),
+        implicit_fire_rate_prompt=data.get("implicit_fire_rate_prompt"),
     )
 
 
