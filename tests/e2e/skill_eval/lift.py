@@ -150,6 +150,10 @@ def run_task_and_score(
     )
     result = {"transcript": turns, "tool_call_count": tool_count, "path": "B"}
     scored = score_result(task_dict, result)
+    # For no-MCP (light-skills) tasks, score 1 = correct code but unverified = pass
+    # The standard rubric penalizes no-tool-calls, which is expected in light-skills mode
+    if no_mcp and scored["score"] == 1:
+        scored = {**scored, "score": 2, "reasoning": scored["reasoning"] + " [light-skills: score 1 promoted to pass]"}
     return {**scored, "task_id": task_id, "condition": skill_name_or_none or "baseline"}
 
 
