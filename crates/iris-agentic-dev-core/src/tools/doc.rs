@@ -55,6 +55,28 @@ fn ok_json(v: serde_json::Value) -> Result<rmcp::model::CallToolResult, rmcp::Er
 fn err_json(code: &str, msg: &str) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
     ok_json(serde_json::json!({"success": false, "error_code": code, "error": msg}))
 }
+/// Map a non-2xx HTTP status to an accurate error code.
+/// IRIS_UNREACHABLE is reserved for transport errors (reqwest send() failures).
+fn http_err_json(
+    status: reqwest::StatusCode,
+    body_hint: &str,
+) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+    let code = match status.as_u16() {
+        400 => "BAD_REQUEST",
+        401 | 403 => "AUTH_ERROR",
+        409 => "CONFLICT",
+        423 => "LOCKED",
+        404 => "NOT_FOUND",
+        s if s >= 500 => "SERVER_ERROR",
+        _ => "HTTP_ERROR",
+    };
+    let msg = if body_hint.is_empty() {
+        format!("HTTP {status}")
+    } else {
+        format!("HTTP {status}: {body_hint}")
+    };
+    err_json(code, &msg)
+}
 
 pub async fn handle_iris_doc(
     iris: &IrisConnection,
@@ -137,11 +159,13 @@ async fn handle_get(
         .await
         .map_err(|e| rmcp::ErrorData::internal_error(format!("HTTP error: {e}"), None))?;
 
-    if resp.status().as_u16() == 404 {
+    let status = resp.status();
+    if status.as_u16() == 404 {
         return err_json("NOT_FOUND", &format!("Document not found: {name}"));
     }
-    if !resp.status().is_success() {
-        return err_json("IRIS_UNREACHABLE", &format!("HTTP {}", resp.status()));
+    if !status.is_success() {
+        let body_hint = resp.text().await.unwrap_or_default();
+        return http_err_json(status, body_hint.trim());
     }
 
     let body: serde_json::Value = resp.json().await.unwrap_or_default();
@@ -278,8 +302,10 @@ async fn do_write(
         .await
         .map_err(|e| rmcp::ErrorData::internal_error(format!("HTTP error: {e}"), None))?;
 
-    if !resp.status().is_success() {
-        return err_json("IRIS_UNREACHABLE", &format!("HTTP {}", resp.status()));
+    let put_status = resp.status();
+    if !put_status.is_success() {
+        let body_hint = resp.text().await.unwrap_or_default();
+        return http_err_json(put_status, body_hint.trim());
     }
     // Check body for Atelier-level errors (200 OK with status.errors, e.g. build 110
     // SetTextFromString NULL namespace bug via web gateway).
@@ -310,6 +336,17 @@ async fn do_write(
         let (compile_ok, compile_errors, compile_console) = match compile_resp {
             Err(e) => (false, vec![e.to_string()], vec![]),
             Ok(r) => {
+                // Non-2xx (e.g. HTTP 400 on concurrent compile conflict) means compile did not run.
+                let compile_status = r.status();
+                if !compile_status.is_success() {
+                    let hint = r.text().await.unwrap_or_default();
+                    let msg = format!(
+                        "Compile request failed: HTTP {} {}",
+                        compile_status,
+                        hint.trim()
+                    );
+                    return err_json("COMPILE_FAILED", &msg);
+                }
                 let body: serde_json::Value = r.json().await.unwrap_or_default();
                 let console: Vec<String> = body["console"]
                     .as_array()
@@ -394,11 +431,13 @@ async fn handle_delete(
         .await
         .map_err(|e| rmcp::ErrorData::internal_error(format!("HTTP error: {e}"), None))?;
 
-    if resp.status().as_u16() == 404 {
+    let del_status = resp.status();
+    if del_status.as_u16() == 404 {
         return err_json("NOT_FOUND", &format!("Document not found: {name}"));
     }
-    if !resp.status().is_success() {
-        return err_json("IRIS_UNREACHABLE", &format!("HTTP {}", resp.status()));
+    if !del_status.is_success() {
+        let body_hint = resp.text().await.unwrap_or_default();
+        return http_err_json(del_status, body_hint.trim());
     }
     ok_json(serde_json::json!({"success": true, "name": name}))
 }

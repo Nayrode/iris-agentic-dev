@@ -280,11 +280,12 @@ impl IrisConnection {
             .chars()
             .take(12)
             .collect();
-        let class_name = format!("User.IrisDevRun{}", id);
+        // Use a dedicated scratch package (IrisDevTmp) rather than User.* to avoid
+        // polluting the user's application namespace with transient executor classes.
+        let class_name = format!("IrisDevTmp.IrisDevRun{}", id);
         let doc_name = format!("{}.cls", class_name);
-        // SQL proc name: User package maps to SQLUser schema in IRIS SQL.
-        // "output" is a reserved word in IRIS SQL — use "result" as the column alias.
-        let sql_func = format!("SQLUser.IrisDevRun{}_Execute", id);
+        // SQL proc name: IrisDevTmp package maps to SQLIrisDevTmp schema in IRIS SQL.
+        let sql_func = format!("SQLIrisDevTmp.IrisDevRun{}_Execute", id);
         let tmpfile = format!("/tmp/irisd_{}.txt", id);
 
         let content = Self::build_exec_class(&class_name, &tmpfile, code);

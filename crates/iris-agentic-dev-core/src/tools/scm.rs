@@ -126,8 +126,10 @@ pub async fn handle_iris_source_control(
         "status" => {
             // Check if SCM is installed
             let doc_q = os_quote(doc);
+            // IsEditable() is not on the base class — only on subclasses that implement it.
+            // Wrap in try/catch so SCM implementations without this method default to editable=1.
             let check_code = format!(
-                "set obj=##class(%Studio.SourceControl.Base).%GetImplementationObject(\"{doc_q}\") if '$IsObject(obj) {{ write \"UNCONTROLLED\" }} else {{ set editable=obj.IsEditable(\"{doc_q}\") write editable_\"|\"_$get(obj.Owner) }}"
+                "set obj=##class(%Studio.SourceControl.Base).%GetImplementationObject(\"{doc_q}\") if '$IsObject(obj) {{ write \"UNCONTROLLED\" }} else {{ set editable=1 try {{ set editable=obj.IsEditable(\"{doc_q}\") }} catch e {{}} write editable_\"|\"_$get(obj.Owner) }}"
             );
             let out = xecute(iris, client, &check_code, ns)
                 .await

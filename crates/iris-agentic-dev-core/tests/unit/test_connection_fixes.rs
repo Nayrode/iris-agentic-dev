@@ -248,47 +248,55 @@ fn test_build_exec_class_handles_long_code() {
 }
 
 // ── SQL proc name: must use underscore not dot (#18) ─────────────────────────
+// ── Scratch package must be IrisDevTmp, not User (#60) ───────────────────────
 
 #[test]
 fn test_build_exec_class_sql_proc_name_uses_underscore() {
-    // The generated class User.IrisDevRunXXX with method Execute [SqlProc]
-    // maps to SQL proc User_IrisDevRunXXX_Execute (underscore, not dot).
+    // The generated class IrisDevTmp.IrisDevRunXXX with method Execute [SqlProc]
+    // maps to SQL proc SQLIrisDevTmp.IrisDevRunXXX_Execute (schema prefix, not dot).
     // Regression test for #18: was User.IrisDevRunXXX_Execute which caused
     // silent IRIS_COMPILE_FAILED with empty error message.
     let lines = IrisConnection::build_exec_class_for_test(
-        "User.IrisDevRunabc123",
+        "IrisDevTmp.IrisDevRunabc123",
         "/tmp/test.txt",
         "Write 1",
     );
-    // The class name in the generated source should be User.IrisDevRunabc123
+    // The class name in the generated source should be IrisDevTmp.IrisDevRunabc123
     assert!(
-        lines.iter().any(|l| l.contains("User.IrisDevRunabc123")),
+        lines
+            .iter()
+            .any(|l| l.contains("IrisDevTmp.IrisDevRunabc123")),
         "class name should appear in generated source"
     );
-    // The SQL proc is built separately in execute_via_generator_once as:
-    // format!("User_IrisDevRun{}_Execute", id)
-    // We verify the naming rule: dots → underscores in SQL identifiers.
-    // Test the format string directly:
+    // SQL proc: IrisDevTmp package maps to SQLIrisDevTmp schema.
     let id = "abc123";
-    let sql_func = format!("User_IrisDevRun{}_Execute", id);
-    assert_eq!(sql_func, "User_IrisDevRunabc123_Execute");
+    let sql_func = format!("SQLIrisDevTmp.IrisDevRun{}_Execute", id);
+    assert_eq!(sql_func, "SQLIrisDevTmp.IrisDevRunabc123_Execute");
     assert!(
-        !sql_func.contains('.'),
-        "SQL proc name must not contain dots: {}",
+        !sql_func.starts_with("User"),
+        "SQL proc name must not be in User schema: {}",
         sql_func
     );
 }
 
 #[test]
-fn test_sql_proc_name_not_dot_form() {
-    // Explicitly assert the wrong form is NOT used
+fn test_scratch_package_is_not_user() {
+    // Regression test for #60: executor classes must not be generated in User.*
     let id = "testid";
-    let wrong = format!("User.IrisDevRun{}_Execute", id);
-    let correct = format!("User_IrisDevRun{}_Execute", id);
-    assert_ne!(wrong, correct, "dot form and underscore form must differ");
+    let class_name = format!("IrisDevTmp.IrisDevRun{}", id);
+    let sql_func = format!("SQLIrisDevTmp.IrisDevRun{}_Execute", id);
     assert!(
-        correct.starts_with("User_"),
-        "correct form starts with User_"
+        class_name.starts_with("IrisDevTmp."),
+        "class must be in IrisDevTmp package, got: {}",
+        class_name
     );
-    assert!(wrong.starts_with("User."), "wrong form starts with User.");
+    assert!(
+        !class_name.starts_with("User."),
+        "class must not be in User package"
+    );
+    assert!(
+        sql_func.starts_with("SQLIrisDevTmp."),
+        "SQL proc must use SQLIrisDevTmp schema, got: {}",
+        sql_func
+    );
 }

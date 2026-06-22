@@ -852,7 +852,11 @@ fn default_max_entries() -> usize {
     50
 }
 fn default_execute_timeout() -> u64 {
-    30
+    // Tests can run for >30s on large suites. Default 120s; override with OBJECTSCRIPT_TEST_TIMEOUT.
+    std::env::var("OBJECTSCRIPT_TEST_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(120)
 }
 fn default_username() -> String {
     "_SYSTEM".to_string()
@@ -959,9 +963,18 @@ pub fn build_test_run_from_sql(suites: &[SuiteRow], methods: &[MethodRow]) -> se
         }));
     }
 
-    let success = failed == 0 && errors == 0;
+    // success=true means the test run executed (tool worked); outcome reflects test results.
+    // Agents should check outcome, not success, to decide whether to fix code vs. fix tooling.
+    let outcome = if errors > 0 {
+        "errored"
+    } else if failed > 0 {
+        "failed"
+    } else {
+        "passed"
+    };
     serde_json::json!({
-        "success": success,
+        "success": true,
+        "outcome": outcome,
         "total": total,
         "passed": passed,
         "failed": failed,
