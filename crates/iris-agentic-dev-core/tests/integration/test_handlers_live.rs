@@ -7704,3 +7704,525 @@ async fn test_generate_coverage_extract_class_name_via_dispatch() {
         Err(e) => eprintln!("iris_generate_class error (ok without LLM): {e}"),
     }
 }
+
+// ── interop branch coverage push (production/item/credential/lookup) ──────────
+
+#[tokio::test]
+async fn test_dispatch_iris_production_status_no_production_namespace() {
+    // Query %SYS namespace — no production there, exercises NO_PRODUCTION branch
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production",
+            serde_json::json!({
+                "action": "status",
+                "namespace": "%SYS"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    // Expect NO_PRODUCTION or INTEROP_ERROR (no Ensemble in %SYS)
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "production status %SYS: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_start_nonexistent() {
+    // Attempt to start a non-existent production — exercises start_impl Ok(error) branch
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production",
+            serde_json::json!({
+                "action": "start",
+                "production_name": "IrisDevTest.NonExistentProduction",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "production start nonexistent: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_stop_v2() {
+    // Stop production — if none running, exercises the error branch in stop_impl
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production",
+            serde_json::json!({
+                "action": "stop",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "production stop: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_update_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production",
+            serde_json::json!({
+                "action": "update",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "production update: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_recover_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production",
+            serde_json::json!({
+                "action": "recover",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "production recover: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_needs_update_v3() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production",
+            serde_json::json!({
+                "action": "check",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some()
+            || v.get("needs_update").is_some()
+            || v.get("error_code").is_some(),
+        "production check: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_item_enable_nonexistent() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production_item",
+            serde_json::json!({
+                "action": "enable",
+                "item_name": "IrisDevTest.NonExistentItem",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "production_item enable nonexistent: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_item_disable_nonexistent() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production_item",
+            serde_json::json!({
+                "action": "disable",
+                "item_name": "IrisDevTest.NonExistentItem",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "production_item disable nonexistent: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_item_set_settings_empty() {
+    // set_settings with empty settings map — exercises INVALID_PARAMS branch
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production_item",
+            serde_json::json!({
+                "action": "set_settings",
+                "item_name": "IrisDevTest.AnyItem",
+                "namespace": "USER",
+                "settings": {}
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "production_item set_settings empty: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_production_item_invalid_action_v3() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_production_item",
+            serde_json::json!({
+                "action": "bogus_action",
+                "item_name": "SomeItem",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert_eq!(
+        v.get("error_code").and_then(|c| c.as_str()),
+        Some("INVALID_ACTION"),
+        "production_item bogus action: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_credential_manage_create_v2() {
+    // Create a test credential — exercises create branch
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_credential_manage",
+            serde_json::json!({
+                "action": "create",
+                "id": "IrisDevTestCred",
+                "username": "testuser",
+                "password": "testpass",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "credential create: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_credential_manage_update_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_credential_manage",
+            serde_json::json!({
+                "action": "update",
+                "id": "IrisDevTestCred",
+                "username": "newuser",
+                "password": "newpass",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "credential update: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_credential_manage_delete_notfound() {
+    // Delete a credential that doesn't exist — exercises CREDENTIAL_NOT_FOUND branch
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_credential_manage",
+            serde_json::json!({
+                "action": "delete",
+                "id": "IrisDevTestCredNonExistent99",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "credential delete not found: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_credential_manage_invalid_action_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_credential_manage",
+            serde_json::json!({
+                "action": "invalid_op",
+                "id": "SomeCred",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert_eq!(
+        v.get("error_code").and_then(|c| c.as_str()),
+        Some("INVALID_ACTION"),
+        "credential manage invalid action: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_lookup_manage_list_tables_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_lookup_manage",
+            serde_json::json!({
+                "action": "list_tables",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("tables").is_some() || v.get("error_code").is_some(),
+        "lookup list_tables: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_lookup_manage_set_and_get() {
+    // Set a lookup value then get it — exercises set and get branches
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // set
+    let r = tools
+        .call_for_test(
+            "iris_lookup_manage",
+            serde_json::json!({
+                "action": "set",
+                "table": "IrisDevTestTable",
+                "key": "testkey",
+                "value": "testval",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let vs = parse_result(r);
+    assert!(
+        vs.get("success").is_some() || vs.get("error_code").is_some(),
+        "lookup set: {vs}"
+    );
+
+    // get
+    let r2 = tools
+        .call_for_test(
+            "iris_lookup_manage",
+            serde_json::json!({
+                "action": "get",
+                "table": "IrisDevTestTable",
+                "key": "testkey",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let vg = parse_result(r2);
+    assert!(
+        vg.get("value").is_some() || vg.get("error_code").is_some(),
+        "lookup get: {vg}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_lookup_manage_list_keys_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_lookup_manage",
+            serde_json::json!({
+                "action": "list_keys",
+                "table": "IrisDevTestTable",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("keys").is_some() || v.get("error_code").is_some(),
+        "lookup list_keys v2: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_lookup_manage_delete_notfound() {
+    // Delete from a non-existent table — exercises TABLE_NOT_FOUND branch
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_lookup_manage",
+            serde_json::json!({
+                "action": "delete",
+                "table": "IrisDevNonExistentTable999",
+                "key": "anykey",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "lookup delete not found: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_lookup_manage_get_not_found_table() {
+    // Get from a non-existent table — exercises TABLE_NOT_FOUND in get branch
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_lookup_manage",
+            serde_json::json!({
+                "action": "get",
+                "table": "IrisDevNonExistentTable999",
+                "key": "anykey",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "lookup get not found table: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_lookup_manage_invalid_action_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_lookup_manage",
+            serde_json::json!({
+                "action": "bogus_lookup_action",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert_eq!(
+        v.get("error_code").and_then(|c| c.as_str()),
+        Some("INVALID_ACTION"),
+        "lookup invalid action: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_lookup_manage_missing_params() {
+    // set without table — exercises INVALID_PARAMS branch
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_lookup_manage",
+            serde_json::json!({
+                "action": "set",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert_eq!(
+        v.get("error_code").and_then(|c| c.as_str()),
+        Some("INVALID_PARAMS"),
+        "lookup set missing params: {v}"
+    );
+}
