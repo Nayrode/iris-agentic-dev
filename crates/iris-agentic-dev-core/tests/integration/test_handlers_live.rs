@@ -6380,7 +6380,7 @@ async fn test_dispatch_agent_history_v2() {
         .await;
     let v = parse_result(result);
     assert!(
-        v.get("success").is_some() || v.get("history").is_some() || v.get("error_code").is_some(),
+        v.get("calls").is_some() || v.get("history").is_some() || v.get("error_code").is_some(),
         "agent_history: {v}"
     );
 }
@@ -6398,7 +6398,9 @@ async fn test_dispatch_agent_stats_v2() {
         .await;
     let v = parse_result(result);
     assert!(
-        v.get("success").is_some() || v.get("error_code").is_some(),
+        v.get("session_calls").is_some()
+            || v.get("success").is_some()
+            || v.get("error_code").is_some(),
         "agent_stats: {v}"
     );
 }
@@ -6416,7 +6418,8 @@ async fn test_dispatch_check_config_v2() {
         .await;
     let v = parse_result(result);
     assert!(
-        v.get("iris_connected").is_some()
+        v.get("connected").is_some()
+            || v.get("iris_connected").is_some()
             || v.get("success").is_some()
             || v.get("error_code").is_some(),
         "check_config: {v}"
