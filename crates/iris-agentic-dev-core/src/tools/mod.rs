@@ -5530,6 +5530,118 @@ mod pure_fn_tests {
         assert_eq!(p.limit, Some(10));
         assert_eq!(p.offset, 5);
     }
+
+    // ── translate_symbols_query ───────────────────────────────────────────────
+
+    #[test]
+    fn test_translate_symbols_query_star_returns_all() {
+        let (sql, params) = translate_symbols_query(100, "*");
+        assert!(sql.contains("SELECT TOP 100"));
+        assert!(!sql.contains("WHERE"));
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_translate_symbols_query_empty_returns_all() {
+        let (sql, params) = translate_symbols_query(50, "");
+        assert!(!sql.contains("WHERE"));
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_translate_symbols_query_pkg_star_prefix() {
+        let (sql, params) = translate_symbols_query(100, "Ens.*");
+        assert!(sql.contains("%STARTSWITH"));
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], serde_json::Value::String("Ens.".to_string()));
+    }
+
+    #[test]
+    fn test_translate_symbols_query_trailing_dot() {
+        let (sql, params) = translate_symbols_query(100, "MyApp.");
+        assert!(sql.contains("%STARTSWITH"));
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], serde_json::Value::String("MyApp.".to_string()));
+    }
+
+    #[test]
+    fn test_translate_symbols_query_mid_glob() {
+        let (sql, params) = translate_symbols_query(100, "Ens.*.Production");
+        assert!(sql.contains("LIKE"));
+        assert_eq!(params.len(), 1);
+        // * → %
+        assert_eq!(
+            params[0],
+            serde_json::Value::String("Ens.%.Production".to_string())
+        );
+    }
+
+    #[test]
+    fn test_translate_symbols_query_plain_substring() {
+        let (sql, params) = translate_symbols_query(100, "Person");
+        assert!(sql.contains("LIKE"));
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], serde_json::Value::String("%Person%".to_string()));
+    }
+
+    #[test]
+    fn test_translate_symbols_query_limit_applied() {
+        let (sql, _) = translate_symbols_query(25, "*");
+        assert!(sql.contains("SELECT TOP 25"));
+    }
+
+    // ── extract_port ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_port_found() {
+        // typical docker port mapping: "0.0.0.0:52780->52773/tcp"
+        let ports = "0.0.0.0:52780->52773/tcp, 0.0.0.0:11972->1972/tcp";
+        assert_eq!(extract_port(ports, "52773"), Some(52780));
+        assert_eq!(extract_port(ports, "1972"), Some(11972));
+    }
+
+    #[test]
+    fn test_extract_port_not_found() {
+        let ports = "0.0.0.0:52780->52773/tcp";
+        assert_eq!(extract_port(ports, "1972"), None);
+    }
+
+    #[test]
+    fn test_extract_port_empty_string() {
+        assert_eq!(extract_port("", "1972"), None);
+    }
+
+    // ── sort_containers ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_sort_containers_by_score_descending() {
+        let v = vec![
+            serde_json::json!({"name": "low", "score": 1}),
+            serde_json::json!({"name": "high", "score": 10}),
+            serde_json::json!({"name": "mid", "score": 5}),
+        ];
+        let sorted = sort_containers(v);
+        assert_eq!(sorted[0]["name"], "high");
+        assert_eq!(sorted[1]["name"], "mid");
+        assert_eq!(sorted[2]["name"], "low");
+    }
+
+    #[test]
+    fn test_sort_containers_tie_breaks_by_name() {
+        let v = vec![
+            serde_json::json!({"name": "zoo", "score": 5}),
+            serde_json::json!({"name": "alpha", "score": 5}),
+        ];
+        let sorted = sort_containers(v);
+        assert_eq!(sorted[0]["name"], "alpha");
+        assert_eq!(sorted[1]["name"], "zoo");
+    }
+
+    #[test]
+    fn test_sort_containers_empty() {
+        let sorted = sort_containers(vec![]);
+        assert!(sorted.is_empty());
+    }
 }
 
 /// Test-only dispatch helper — call private IrisTools handler methods by tool name.

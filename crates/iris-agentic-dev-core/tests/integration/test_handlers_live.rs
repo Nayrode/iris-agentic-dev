@@ -3512,3 +3512,566 @@ async fn test_dispatch_iris_table_info_columns() {
         "iris_table_info columns: {v}"
     );
 }
+
+// ── iris_macro actions (signature, expand, location, definition) ──────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_macro_signature_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_macro",
+            serde_json::json!({
+                "action": "signature",
+                "name": "$$AssertEquals",
+                "args": [],
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_macro signature: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_macro_expand_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_macro",
+            serde_json::json!({
+                "action": "expand",
+                "name": "$$AssertEquals",
+                "args": ["x", "y"],
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_macro expand: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_macro_location_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_macro",
+            serde_json::json!({
+                "action": "location",
+                "name": "$$AssertEquals",
+                "args": [],
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_macro location: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_macro_definition_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_macro",
+            serde_json::json!({
+                "action": "definition",
+                "name": "$$AssertEquals",
+                "args": [],
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_macro definition: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_info_unknown_what() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_info",
+            serde_json::json!({
+                "what": "totally_unknown_xyz",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert_eq!(
+        v["error_code"].as_str().unwrap_or(""),
+        "INVALID_PARAM",
+        "unknown what should return INVALID_PARAM: {v}"
+    );
+}
+
+// ── iris_debug additional actions ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_debug_error_logs_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_debug",
+            serde_json::json!({
+                "action": "error_logs",
+                "namespace": "USER",
+                "limit": 5
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some() || v.get("logs").is_some(),
+        "iris_debug error_logs: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_debug_capture_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_debug",
+            serde_json::json!({
+                "action": "capture",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some() || v.get("capture").is_some(),
+        "iris_debug capture: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_debug_map_int() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_debug",
+            serde_json::json!({
+                "action": "map_int",
+                "error_string": "<UNDEFINED>x+1^%SYS.Monitor",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_debug map_int: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_debug_source_map_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_debug",
+            serde_json::json!({
+                "action": "source_map",
+                "class_name": "%Library.Persistent",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_debug source_map: {v}"
+    );
+}
+
+// ── iris_generate (info.rs handle_iris_generate) ──────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_generate_class() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_generate",
+            serde_json::json!({
+                "gen_type": "class",
+                "description": "A simple persistent class for test data",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v["success"].as_bool().unwrap_or(false) || v.get("error_code").is_some(),
+        "iris_generate class: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_generate_test() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_generate",
+            serde_json::json!({
+                "gen_type": "test",
+                "class_name": "%Library.Persistent",
+                "description": "Unit tests for persistent class methods",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v["success"].as_bool().unwrap_or(false) || v.get("error_code").is_some(),
+        "iris_generate test: {v}"
+    );
+}
+
+// ── iris_table_info additional actions ────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_table_info_indexes() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_table_info",
+            serde_json::json!({
+                "table": "%Dictionary.ClassDefinition",
+                "action": "indexes",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_table_info indexes: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_table_info_row_count() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_table_info",
+            serde_json::json!({
+                "table": "%Dictionary.ClassDefinition",
+                "action": "columns",
+                "include_row_count": true,
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_table_info row_count: {v}"
+    );
+}
+
+// ── iris_doc delete mode ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_doc_delete_nonexistent_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({
+                "mode": "delete",
+                "name": "IrisDevTest.NonExistentClassXYZ9999.cls",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some() || v.get("deleted").is_some(),
+        "iris_doc delete: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_doc_put_and_get() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Upload a minimal class then GET it back
+    let put = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({
+                "mode": "put",
+                "name": "IrisDevTmp.LiveTestPutGet.cls",
+                "content": "Class IrisDevTmp.LiveTestPutGet {}",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let pv = parse_result(put);
+    assert!(
+        pv.get("success").is_some() || pv.get("error_code").is_some(),
+        "iris_doc put: {pv}"
+    );
+    let get = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({
+                "mode": "get",
+                "name": "IrisDevTmp.LiveTestPutGet.cls",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let gv = parse_result(get);
+    assert!(
+        gv.get("success").is_some()
+            || gv.get("error_code").is_some()
+            || gv.get("content").is_some(),
+        "iris_doc get: {gv}"
+    );
+}
+
+// ── iris_admin additional actions ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_admin_check_permission_extra_cases() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    for permission in &["WRITE", "READ"] {
+        let result = tools
+            .call_for_test(
+                "iris_admin",
+                serde_json::json!({
+                    "action": "check_permission",
+                    "resource": "%Admin_Operate",
+                    "permission": permission
+                }),
+            )
+            .await;
+        let v = parse_result(result);
+        assert!(
+            v.get("success").is_some() || v.get("error_code").is_some(),
+            "iris_admin check_permission {permission}: {v}"
+        );
+    }
+}
+
+// ── iris_query with namespace param ──────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_query_user_namespace() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_query",
+            serde_json::json!({
+                "query": "SELECT TOP 1 Name FROM %Dictionary.ClassDefinition ORDER BY Name",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v["success"].as_bool().unwrap_or(false) || v.get("error_code").is_some(),
+        "iris_query namespace: {v}"
+    );
+}
+
+// ── iris_symbols with different query forms ───────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_symbols_trailing_dot() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_symbols",
+            serde_json::json!({
+                "query": "%Library.",
+                "namespace": "USER",
+                "limit": 5
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("symbols").is_some() || v.get("error_code").is_some(),
+        "iris_symbols trailing dot: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_symbols_mid_glob() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_symbols",
+            serde_json::json!({
+                "query": "%Library.*.cls",
+                "namespace": "USER",
+                "limit": 5
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("symbols").is_some() || v.get("error_code").is_some(),
+        "iris_symbols mid glob: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_symbols_plain_substring() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_symbols",
+            serde_json::json!({
+                "query": "Persistent",
+                "namespace": "USER",
+                "limit": 10
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("symbols").is_some() || v.get("error_code").is_some(),
+        "iris_symbols plain: {v}"
+    );
+}
+
+// ── iris_get_log additional log types ─────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_get_log_app() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_get_log",
+            serde_json::json!({
+                "log_type": "app",
+                "limit": 5
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some() || v.get("entries").is_some(),
+        "iris_get_log app: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_get_log_with_id() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // First store something, then retrieve by id — use cconsole which always exists
+    let store_result = tools
+        .call_for_test(
+            "iris_get_log",
+            serde_json::json!({
+                "log_type": "cconsole",
+                "limit": 5,
+                "store": true
+            }),
+        )
+        .await;
+    let sv = parse_result(store_result);
+    // If we got a log_id back, try to retrieve it
+    if let Some(id) = sv["log_id"].as_str() {
+        let get_result = tools
+            .call_for_test(
+                "iris_get_log",
+                serde_json::json!({
+                    "id": id,
+                    "limit": 5,
+                    "offset": 0
+                }),
+            )
+            .await;
+        let gv = parse_result(get_result);
+        assert!(
+            gv.get("success").is_some() || gv.get("error_code").is_some(),
+            "iris_get_log by id: {gv}"
+        );
+    }
+}
