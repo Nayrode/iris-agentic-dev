@@ -502,7 +502,10 @@ fn test_get_paginated_expired_returns_none() {
     let entry = make_entry("iris_compile", 5);
     let id = s.store(entry);
     let result = s.get_paginated(&id, None, 0);
-    assert!(result.is_none(), "get_paginated should return None for expired entry");
+    assert!(
+        result.is_none(),
+        "get_paginated should return None for expired entry"
+    );
 }
 
 #[test]
@@ -532,6 +535,9 @@ fn test_get_paginated_non_array_result_with_limit() {
     let id = s.store(entry);
     let (val, has_more, _) = s.get_paginated(&id, Some(2), 0).unwrap();
     // Non-array with limit → returns full result
-    assert!(val.get("status").is_some(), "should return full object: {val}");
+    assert!(
+        val.get("status").is_some(),
+        "should return full object: {val}"
+    );
     assert!(!has_more);
 }

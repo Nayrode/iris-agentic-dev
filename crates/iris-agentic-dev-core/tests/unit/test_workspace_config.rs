@@ -550,14 +550,10 @@ fn test_load_falls_back_to_legacy_iris_dev_toml() {
     let dir = tempfile::tempdir().unwrap();
     // Only legacy file exists — not the new .iris-agentic-dev.toml
     let legacy = dir.path().join(".iris-dev.toml");
-    std::fs::write(
-        &legacy,
-        "container = \"legacy-iris\"\n",
-    )
-    .unwrap();
-    let cfg = iris_agentic_dev_core::iris::workspace_config::load_workspace_config(
-        Some(dir.path().to_str().unwrap()),
-    );
+    std::fs::write(&legacy, "container = \"legacy-iris\"\n").unwrap();
+    let cfg = iris_agentic_dev_core::iris::workspace_config::load_workspace_config(Some(
+        dir.path().to_str().unwrap(),
+    ));
     assert!(cfg.is_some(), "should fall back to legacy .iris-dev.toml");
     assert_eq!(cfg.unwrap().container.as_deref(), Some("legacy-iris"));
 }
@@ -576,9 +572,9 @@ fn test_workspace_root_prefers_new_over_legacy() {
         "container = \"old-iris\"\n",
     )
     .unwrap();
-    let cfg = iris_agentic_dev_core::iris::workspace_config::load_workspace_config(
-        Some(dir.path().to_str().unwrap()),
-    );
+    let cfg = iris_agentic_dev_core::iris::workspace_config::load_workspace_config(Some(
+        dir.path().to_str().unwrap(),
+    ));
     assert_eq!(
         cfg.unwrap().container.as_deref(),
         Some("new-iris"),
@@ -591,10 +587,7 @@ fn test_workspace_root_prefers_new_over_legacy() {
 #[test]
 fn test_load_parses_docker_only_field() {
     let dir = tempfile::TempDir::new().unwrap();
-    write_toml(
-        &dir,
-        "container = \"myapp-iris\"\ndocker_only = true\n",
-    );
+    write_toml(&dir, "container = \"myapp-iris\"\ndocker_only = true\n");
     let cfg = load_workspace_config(Some(dir.path().to_str().unwrap())).unwrap();
     assert!(cfg.docker_only, "docker_only should parse as true");
 }
