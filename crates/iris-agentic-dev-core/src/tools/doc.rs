@@ -814,4 +814,31 @@ mod tests {
         // 42 and null have no string representation — they are filtered out
         assert!(!s.contains("42"));
     }
+
+    #[test]
+    fn test_strip_storage_blocks_trailing_blank_lines_removed() {
+        // Lines 520-526: trailing blank lines before the Storage block are removed.
+        let cls =
+            "Class Foo {\nProperty X As %String;\n\n\nStorage Default {\n<Type>T</Type>\n}\n}";
+        let (stripped, flag) = strip_storage_blocks(cls);
+        assert!(flag, "should detect storage");
+        assert!(!stripped.contains("Storage Default"));
+        // The blank lines before Storage should be trimmed
+        assert!(
+            !stripped.ends_with("\n\n"),
+            "should not end with multiple blank lines: {:?}",
+            stripped
+        );
+    }
+
+    #[test]
+    fn test_strip_storage_blocks_two_named_blocks() {
+        // Edge case: class with two named Storage blocks (both should be stripped)
+        let cls = "Class Foo {\nProperty X As %String;\nStorage Default {\n<Data/>\n}\nStorage Old {\n<Data/>\n}\n}";
+        let (stripped, flag) = strip_storage_blocks(cls);
+        assert!(flag);
+        assert!(!stripped.contains("Storage Default"));
+        assert!(!stripped.contains("Storage Old"));
+        assert!(stripped.contains("Property X"));
+    }
 }

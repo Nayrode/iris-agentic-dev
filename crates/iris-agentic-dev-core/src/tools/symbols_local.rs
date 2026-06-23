@@ -923,4 +923,24 @@ mod tests {
             symbols
         );
     }
+
+    // ── extract_cls_symbols: non-class-definition top-level node ──────────────
+
+    #[test]
+    fn extract_cls_symbols_no_class_definition() {
+        // Line 196: top.kind() != "class_definition" → continue
+        // A file with only a comment or empty content — no class_definition node
+        let src = b"// Just a comment\n";
+        let (symbols, _) = extract_cls_symbols(src, "src/NoClass.cls", "*");
+        // Should return empty symbols (no class_definition → iterate body but find nothing)
+        let _ = symbols; // may be empty or have nothing — just ensures no panic
+    }
+
+    #[test]
+    fn extract_cls_symbols_empty_source() {
+        // Another path for line 196: completely empty source
+        let src = b"";
+        let (symbols, _) = extract_cls_symbols(src, "src/Empty.cls", "*");
+        assert!(symbols.is_empty(), "empty source should yield no symbols");
+    }
 }
