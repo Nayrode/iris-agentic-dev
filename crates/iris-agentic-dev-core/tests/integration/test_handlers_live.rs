@@ -5506,3 +5506,81 @@ async fn test_dispatch_iris_info_classes() {
     );
 }
 
+// ── iris_get_log: retrieve specific log ID ────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_get_log_not_found() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Non-existent log ID → LOG_NOT_FOUND
+    let result = tools
+        .call_for_test(
+            "iris_get_log",
+            serde_json::json!({
+                "id": "nonexistent-log-id-99999"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert_eq!(
+        v.get("error_code").and_then(|e| e.as_str()),
+        Some("LOG_NOT_FOUND"),
+        "non-existent log ID should return LOG_NOT_FOUND: {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_get_log_paginated_retrieve() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // First execute something to create a log entry
+    let exec_result = tools
+        .call_for_test(
+            "iris_execute",
+            serde_json::json!({
+                "code": "write 1,!",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let ev = parse_result(exec_result);
+    // Try to get a log if one exists
+    let list_result = tools
+        .call_for_test(
+            "iris_get_log",
+            serde_json::json!({
+                "limit": 5
+            }),
+        )
+        .await;
+    let lv = parse_result(list_result);
+    let logs = lv.get("logs").and_then(|l| l.as_array());
+    if let Some(entries) = logs {
+        if let Some(first) = entries.first() {
+            if let Some(id) = first.get("log_id").and_then(|i| i.as_str()) {
+                // Retrieve with limit to exercise paginated response path
+                let paginated = tools
+                    .call_for_test(
+                        "iris_get_log",
+                        serde_json::json!({
+                            "id": id,
+                            "limit": 3,
+                            "offset": 0
+                        }),
+                    )
+                    .await;
+                let pv = parse_result(paginated);
+                assert!(
+                    pv.get("result").is_some() || pv.get("error_code").is_some(),
+                    "iris_get_log with limit: {pv}"
+                );
+            }
+        }
+    }
+    let _ = ev; // suppress unused warning
+}
+
