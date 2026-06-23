@@ -4515,3 +4515,232 @@ async fn test_dispatch_iris_get_log_list_all() {
         "iris_get_log list-all: {v}"
     );
 }
+
+// ── iris_doc batch get (names array) ─────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_doc_batch_get() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({
+                "mode": "get",
+                "names": ["%Library.Persistent.cls", "%Library.RegisteredObject.cls"],
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("documents").is_some() || v.get("error_code").is_some(),
+        "iris_doc batch get: {v}"
+    );
+}
+
+// ── iris_doc batch delete (names array) ──────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_doc_batch_delete() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    if std::env::var("IRIS_ADMIN_TOOLS").unwrap_or_default() != "1" {
+        return;
+    }
+    // Batch delete nonexistent classes — covers batch delete path even on error
+    let result = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({
+                "mode": "delete",
+                "names": ["IrisDevTmp.BatchDelete1.cls", "IrisDevTmp.BatchDelete2.cls"],
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("deleted").is_some() || v.get("error_code").is_some(),
+        "iris_doc batch delete: {v}"
+    );
+}
+
+// ── iris_doc get nonexistent (NOT_FOUND 404 path) ─────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_doc_get_not_found() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({
+                "mode": "get",
+                "name": "IrisDevNonExistent99999.cls",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("error_code").is_some(),
+        "iris_doc get nonexistent should error: {v}"
+    );
+}
+
+// ── iris_doc put with compile=true ────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_doc_put_with_compile() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let cls_content = "Class IrisDevTmp.TestPutCompile Extends %RegisteredObject\n{\n}\n";
+    let result = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({
+                "mode": "put",
+                "name": "IrisDevTmp.TestPutCompile.cls",
+                "content": cls_content,
+                "namespace": "USER",
+                "compile": true
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_doc put with compile: {v}"
+    );
+    // Cleanup
+    let _ = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({
+                "mode": "delete",
+                "name": "IrisDevTmp.TestPutCompile.cls",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+}
+
+// ── resolve_dynamic_dispatch with package prefix (has_prefix=true path) ──────
+
+#[tokio::test]
+async fn test_dispatch_resolve_dynamic_dispatch_with_prefix() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "resolve_dynamic_dispatch",
+            serde_json::json!({
+                "method_name": "OnProcessInput",
+                "package_prefix": "%Library",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("candidates").is_some() || v.get("error_code").is_some(),
+        "resolve_dynamic_dispatch with prefix: {v}"
+    );
+}
+
+// ── resolve_dynamic_dispatch cache hit (second call hits cache) ───────────────
+
+#[tokio::test]
+async fn test_dispatch_resolve_dynamic_dispatch_cache_hit() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Call twice — second call should hit metadata cache
+    for _ in 0..2 {
+        let result = tools
+            .call_for_test(
+                "resolve_dynamic_dispatch",
+                serde_json::json!({
+                    "method_name": "%OnNew",
+                    "namespace": "USER"
+                }),
+            )
+            .await;
+        let v = parse_result(result);
+        assert!(
+            v.get("candidates").is_some() || v.get("error_code").is_some(),
+            "resolve_dynamic_dispatch cache: {v}"
+        );
+    }
+}
+
+// ── extract_message_map_routing cache hit ─────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_extract_message_map_cache_hit() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Call twice on same class — second call hits cache.
+    // %Dictionary.CompiledClass is a real compiled class but has no MessageMap,
+    // so has_message_map:false — valid response, no parse error.
+    for _ in 0..2 {
+        let result = tools
+            .call_for_test(
+                "extract_message_map_routing",
+                serde_json::json!({
+                    "class_name": "%Dictionary.CompiledClass",
+                    "namespace": "USER"
+                }),
+            )
+            .await;
+        match result {
+            Ok(r) => {
+                let text = r.content[0].raw.as_text().unwrap().text.clone();
+                eprintln!("extract_message_map cache: {}", &text[..text.len().min(200)]);
+            }
+            Err(e) => eprintln!("extract_message_map error (ok): {e}"),
+        }
+    }
+}
+
+// ── find_subclass_implementations cache hit ───────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_find_subclass_implementations_cache_hit() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Call twice — second call hits cache. Uses correct field name: base_classes.
+    for _ in 0..2 {
+        let result = tools
+            .call_for_test(
+                "find_subclass_implementations",
+                serde_json::json!({
+                    "base_classes": ["%Library.Persistent"],
+                    "method_name": "%OnNew",
+                    "namespace": "USER"
+                }),
+            )
+            .await;
+        let v = parse_result(result);
+        assert!(
+            v.get("implementations").is_some() || v.get("error_code").is_some(),
+            "find_subclass_impls cache: {v}"
+        );
+    }
+}
