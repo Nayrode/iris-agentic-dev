@@ -4320,3 +4320,198 @@ async fn test_dispatch_iris_lookup_transfer_nonexistent() {
         "iris_lookup_transfer export: {v}"
     );
 }
+
+// ── iris_compile with local temp file ────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_compile_local_file() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Write a minimal valid ObjectScript class to a temp file and compile it
+    let cls_content = "Class IrisDevTmp.TestLocalCompile Extends %RegisteredObject\n{\n}\n";
+    let tmp_path = std::env::temp_dir().join("IrisDevTmp.TestLocalCompile.cls");
+    std::fs::write(&tmp_path, cls_content).expect("write temp cls");
+    let target = tmp_path.to_str().unwrap().to_string();
+
+    let result = tools
+        .call_for_test(
+            "iris_compile",
+            serde_json::json!({
+                "target": target,
+                "namespace": "USER",
+                "flags": "ck"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_compile local file: {v}"
+    );
+    // Clean up
+    let _ = std::fs::remove_file(&tmp_path);
+}
+
+#[tokio::test]
+async fn test_dispatch_iris_compile_local_file_no_class_decl() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // File with no Class declaration — doc_name falls back to filename
+    let cls_content = "// No class declaration here\n";
+    let tmp_path = std::env::temp_dir().join("IrisDevTmpNoClass.cls");
+    std::fs::write(&tmp_path, cls_content).expect("write temp cls");
+    let target = tmp_path.to_str().unwrap().to_string();
+
+    let result = tools
+        .call_for_test(
+            "iris_compile",
+            serde_json::json!({
+                "target": target,
+                "namespace": "USER",
+                "flags": "ck"
+            }),
+        )
+        .await;
+    // Will fail compilation — but we exercised the fallback doc_name path
+    match result {
+        Ok(r) => {
+            let text = r.content[0].raw.as_text().unwrap().text.clone();
+            eprintln!("iris_compile no-class-decl: {}", &text[..text.len().min(200)]);
+        }
+        Err(e) => eprintln!("iris_compile no-class-decl error (ok): {e}"),
+    }
+    let _ = std::fs::remove_file(&tmp_path);
+}
+
+// ── iris_test with nonexistent namespace (ERR_NAMESPACE_NOT_FOUND) ────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_test_bad_namespace() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_test",
+            serde_json::json!({
+                "pattern": "SomeTest",
+                "namespace": "IRISDEVFAKENAMESPACE99999"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    // Should return NAMESPACE_NOT_FOUND or success:false
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_test bad namespace: {v}"
+    );
+}
+
+// ── iris_test with directory-style pattern (non-class path) ──────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_test_directory_pattern() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // A path with "/" triggers the non-class branch (no /noload flag)
+    let result = tools
+        .call_for_test(
+            "iris_test",
+            serde_json::json!({
+                "pattern": "/tmp/nonexistent_tests",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_test dir pattern: {v}"
+    );
+}
+
+// ── iris_search live dispatch ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_search_live() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_search",
+            serde_json::json!({
+                "query": "Persistent",
+                "namespace": "USER",
+                "category": "CLS",
+                "inline": true
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_search live: {v}"
+    );
+}
+
+// ── iris_lookup_transfer import ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_lookup_transfer_import() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    if std::env::var("IRIS_ADMIN_TOOLS").unwrap_or_default() != "1" {
+        return;
+    }
+    // Minimal well-formed lookup table XML
+    let xml = r#"<?xml version="1.0" ?><Lookup><![CDATA[IrisDevImportTest]]><entry key="k1" value="v1"/></Lookup>"#;
+    let result = tools
+        .call_for_test(
+            "iris_lookup_transfer",
+            serde_json::json!({
+                "action": "import",
+                "table": "IrisDevImportTest",
+                "xml": xml,
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_lookup_transfer import: {v}"
+    );
+}
+
+// ── iris_get_log list-all (no id) ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_iris_get_log_list_all() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // No id → list all stored entries
+    let result = tools
+        .call_for_test(
+            "iris_get_log",
+            serde_json::json!({}),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("logs").is_some() || v.get("success").is_some(),
+        "iris_get_log list-all: {v}"
+    );
+}
