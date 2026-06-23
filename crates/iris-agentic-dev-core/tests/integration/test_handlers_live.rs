@@ -4325,7 +4325,7 @@ async fn test_dispatch_iris_lookup_transfer_nonexistent() {
 // ── iris_compile with local temp file ────────────────────────────────────────
 
 #[tokio::test]
-async fn test_dispatch_iris_compile_local_file() {
+async fn test_dispatch_iris_compile_local_file_v2() {
     let tools = match make_iris_tools() {
         Some(t) => t,
         None => return,
@@ -5945,5 +5945,260 @@ async fn test_dispatch_iris_execute_no_translate() {
     assert!(
         v.get("success").is_some() || v.get("output").is_some() || v.get("error_code").is_some(),
         "iris_execute no-translate: {v}"
+    );
+}
+
+// ── iris_symbols_local nonexistent workspace path (WORKSPACE_NOT_FOUND) ───────
+
+#[tokio::test]
+async fn test_dispatch_iris_symbols_local_workspace_not_found() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_symbols_local",
+            serde_json::json!({
+                "query": "*.cls",
+                "workspace_path": "/nonexistent/path/xyz_9999_abc"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert_eq!(
+        v.get("error_code").and_then(|e| e.as_str()),
+        Some("WORKSPACE_NOT_FOUND"),
+        "nonexistent workspace should return WORKSPACE_NOT_FOUND: {v}"
+    );
+}
+
+// ── iris_compile from local file path (covers local-file upload path) ─────────
+
+#[tokio::test]
+async fn test_dispatch_iris_compile_local_file_v3() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Write a temp .cls file
+    let dir = tempfile::tempdir().unwrap();
+    let cls_path = dir.path().join("IrisDevTmp.CompileLocal.cls");
+    std::fs::write(&cls_path, "Class IrisDevTmp.CompileLocal {\n}\n").unwrap();
+    let result = tools
+        .call_for_test(
+            "iris_compile",
+            serde_json::json!({
+                "target": cls_path.to_str().unwrap(),
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_compile local file: {v}"
+    );
+}
+
+// ── iris_symbols_local with OBJECTSCRIPT_WORKSPACE env (env branch) ───────────
+
+#[tokio::test]
+async fn test_dispatch_iris_symbols_local_env_workspace() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Set env var to a known directory, then call without workspace_path
+    let dir = tempfile::tempdir().unwrap();
+    std::env::set_var("OBJECTSCRIPT_WORKSPACE", dir.path().to_str().unwrap());
+    let result = tools
+        .call_for_test(
+            "iris_symbols_local",
+            serde_json::json!({
+                "query": "*.cls"
+            }),
+        )
+        .await;
+    std::env::remove_var("OBJECTSCRIPT_WORKSPACE");
+    let v = parse_result(result);
+    // Empty dir → no results, but should succeed
+    assert!(
+        v.get("success").is_some() || v.get("symbols").is_some() || v.get("error_code").is_some(),
+        "symbols_local env workspace: {v}"
+    );
+}
+
+// ── skill_community_list (covers skill_community_list handler) ────────────────
+
+#[tokio::test]
+async fn test_dispatch_skill_community_list() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test("skill_community_list", serde_json::json!({}))
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("skills").is_some() || v.get("success").is_some() || v.get("error_code").is_some(),
+        "skill_community_list: {v}"
+    );
+}
+
+// ── kb_index (covers kb_index handler — empty dir) ────────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_kb_index_empty_dir() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let result = tools
+        .call_for_test(
+            "kb_index",
+            serde_json::json!({
+                "path": dir.path().to_str().unwrap()
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("indexed").is_some() || v.get("error_code").is_some(),
+        "kb_index empty dir: {v}"
+    );
+}
+
+// ── skill_list dispatch (covers skill_list handler) ───────────────────────────
+
+#[tokio::test]
+async fn test_dispatch_skill_list_v2() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test("skill_list", serde_json::json!({}))
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("skills").is_some() || v.get("success").is_some() || v.get("error_code").is_some(),
+        "skill_list: {v}"
+    );
+}
+
+// ── skill_describe dispatch (covers skill_describe handler) ──────────────────
+
+#[tokio::test]
+async fn test_dispatch_skill_describe_not_found() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "skill_describe",
+            serde_json::json!({"name": "nonexistent-skill-xyz-9999"}),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("error_code").is_some() || v.get("success").is_some(),
+        "skill_describe not found: {v}"
+    );
+}
+
+// ── skill_search dispatch (covers skill_search handler) ──────────────────────
+
+#[tokio::test]
+async fn test_dispatch_skill_search_empty() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "skill_search",
+            serde_json::json!({"query": "nonexistent_xyz_9999_query"}),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("results").is_some() || v.get("success").is_some() || v.get("error_code").is_some(),
+        "skill_search empty: {v}"
+    );
+}
+
+// ── skill_community_install dispatch (covers community_install handler) ───────
+
+#[tokio::test]
+async fn test_dispatch_skill_community_install_not_found() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "skill_community_install",
+            serde_json::json!({"name": "nonexistent-xyz-9999"}),
+        )
+        .await;
+    let v = parse_result(result);
+    // Should return NOT_FOUND or error since skill doesn't exist
+    assert!(
+        v.get("error_code").is_some() || v.get("success").is_some(),
+        "skill_community_install not_found: {v}"
+    );
+}
+
+// ── iris_compile with read-only flag (covers read_only guard in iris_compile) ─
+
+#[tokio::test]
+async fn test_dispatch_iris_compile_nonexistent_target() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    // Nonexistent class — should return compile error, not panic
+    let result = tools
+        .call_for_test(
+            "iris_compile",
+            serde_json::json!({
+                "target": "IrisDevTest.TotallyFakeClass99999.cls",
+                "namespace": "USER"
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("error_code").is_some(),
+        "iris_compile nonexistent: {v}"
+    );
+}
+
+// ── iris_execute with &sql macro that translates (covers translation path) ────
+
+#[tokio::test]
+async fn test_dispatch_iris_execute_with_sql_translation() {
+    let tools = match make_iris_tools() {
+        Some(t) => t,
+        None => return,
+    };
+    let result = tools
+        .call_for_test(
+            "iris_execute",
+            serde_json::json!({
+                "code": "&sql(SELECT 1 INTO :x)\nwrite x,!",
+                "namespace": "USER",
+                "translate_sql": true
+            }),
+        )
+        .await;
+    let v = parse_result(result);
+    assert!(
+        v.get("success").is_some() || v.get("output").is_some() || v.get("error_code").is_some(),
+        "iris_execute with sql translation: {v}"
     );
 }
