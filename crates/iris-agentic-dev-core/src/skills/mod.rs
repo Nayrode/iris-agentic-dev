@@ -70,10 +70,13 @@ impl SkillRegistry {
 
         let manifest = self.fetch_manifest(owner, repo, &client).await?;
 
+        let raw_base = std::env::var("GITHUB_RAW_BASE_URL")
+            .unwrap_or_else(|_| "https://raw.githubusercontent.com".to_string());
+
         for skill_path in &manifest.provides_skills {
             let skill_md_url = format!(
-                "https://raw.githubusercontent.com/{}/{}/HEAD/{}/SKILL.md",
-                owner, repo, skill_path
+                "{}/{}/{}/HEAD/{}/SKILL.md",
+                raw_base, owner, repo, skill_path
             );
             if let Ok(content) = fetch_text(&skill_md_url, &client).await {
                 if let Some(name) = extract_frontmatter_field(&content, "name") {
@@ -90,10 +93,7 @@ impl SkillRegistry {
         }
 
         for kb_path in &manifest.provides_kb_items {
-            let kb_url = format!(
-                "https://raw.githubusercontent.com/{}/{}/HEAD/{}",
-                owner, repo, kb_path
-            );
+            let kb_url = format!("{}/{}/{}/HEAD/{}", raw_base, owner, repo, kb_path);
             if let Ok(content) = fetch_text(&kb_url, &client).await {
                 let title = extract_frontmatter_field(&content, "title")
                     .or_else(|| extract_h1_title(&content))
@@ -116,10 +116,9 @@ impl SkillRegistry {
     }
 
     async fn fetch_manifest(&self, owner: &str, repo: &str, client: &Client) -> Result<Manifest> {
-        let url = format!(
-            "https://raw.githubusercontent.com/{}/{}/HEAD/iris-agentic-dev.toml",
-            owner, repo
-        );
+        let raw_base = std::env::var("GITHUB_RAW_BASE_URL")
+            .unwrap_or_else(|_| "https://raw.githubusercontent.com".to_string());
+        let url = format!("{}/{}/{}/HEAD/iris-agentic-dev.toml", raw_base, owner, repo);
         let text = fetch_text(&url, client)
             .await
             .with_context(|| format!("no iris-agentic-dev.toml found in {}/{}", owner, repo))?;
