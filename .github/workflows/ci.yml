@@ -175,6 +175,52 @@ jobs:
           IRIS_NAMESPACE: USER
           IRIS_CONTAINER: iris-e2e
 
+  doc-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: README config path sanity check
+        run: |
+          # Wrong path: Claude Code MCP config is ~/.claude.json, not ~/.claude/settings.json
+          if grep -rn '~/.claude/settings.json' README.md docs/ 2>/dev/null; then
+            echo "FAIL: README references ~/.claude/settings.json — correct path is ~/.claude.json"
+            exit 1
+          fi
+          echo "OK: no wrong config path found"
+
+          # Correct path must be documented
+          if ! grep -q '~/.claude.json' README.md; then
+            echo "FAIL: README does not mention ~/.claude.json"
+            exit 1
+          fi
+          echo "OK: ~/.claude.json documented"
+
+          # Validate complete JSON objects/arrays in README (skip intentional fragments)
+          python3 - <<'PYEOF'
+          import re, json, sys
+          readme = open("README.md").read()
+          blocks = re.findall(r'```json\n(.*?)\n```', readme, re.DOTALL)
+          errors = []
+          skipped = 0
+          for i, block in enumerate(blocks):
+              stripped = block.strip()
+              # Only validate blocks that look like complete objects or arrays
+              if not (stripped.startswith('{') or stripped.startswith('[')):
+                  skipped += 1
+                  continue
+              try:
+                  json.loads(block)
+              except json.JSONDecodeError as e:
+                  errors.append(f"Block {i+1}: {e}\n{block[:200]}")
+          if errors:
+              print("FAIL: invalid JSON in README code blocks:")
+              for e in errors:
+                  print(" ", e)
+              sys.exit(1)
+          validated = len(blocks) - skipped
+          print(f"OK: {validated} complete JSON blocks valid, {skipped} fragment(s) skipped")
+          PYEOF
+
   cross-compile-check:
     runs-on: ubuntu-latest
     steps:
