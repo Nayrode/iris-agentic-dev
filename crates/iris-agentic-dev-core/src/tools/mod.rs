@@ -1683,13 +1683,23 @@ impl IrisTools {
         use crate::iris::workspace_config::{load_fleet_config, ConnectionRole};
 
         let (workspace_path, iris_arc) = {
+            // Prefer config_watcher path (set at startup from OBJECTSCRIPT_WORKSPACE / --workspace).
+            // Fall back to config_file on ConnectionState (set only after a hot-reload cycle).
+            let watcher_ws = {
+                let w = self.config_watcher.lock().unwrap();
+                w.as_ref()
+                    .and_then(|w| w.config_path.parent())
+                    .and_then(|p| p.to_str())
+                    .map(|s| s.to_string())
+            };
             let conn = self.connection.lock().unwrap();
-            let ws = conn
-                .config_file
-                .as_ref()
-                .and_then(|p| p.parent())
-                .and_then(|p| p.to_str())
-                .map(|s| s.to_string());
+            let ws = watcher_ws.or_else(|| {
+                conn.config_file
+                    .as_ref()
+                    .and_then(|p| p.parent())
+                    .and_then(|p| p.to_str())
+                    .map(|s| s.to_string())
+            });
             (ws, conn.iris.clone())
         };
 
@@ -1703,16 +1713,24 @@ impl IrisTools {
             return (ConnectionRole::Workspace, String::new());
         };
 
+        // Active container name from DiscoverySource or IRIS_CONTAINER env var fallback.
+        let active_container = match &iris.source {
+            DiscoverySource::Docker { container_name } => Some(container_name.clone()),
+            _ => std::env::var("IRIS_CONTAINER")
+                .ok()
+                .filter(|s| !s.is_empty()),
+        };
+
         for (name, inst) in &fleet.instance {
-            let matches = match &iris.source {
-                DiscoverySource::Docker { container_name } => {
-                    inst.container.as_deref() == Some(container_name.as_str())
-                }
-                _ => inst
-                    .host
+            let matches = if let Some(ref ic) = inst.container {
+                // Match by container name if the instance declares one.
+                active_container.as_deref() == Some(ic.as_str())
+            } else {
+                // No container in instance config — match by host in base_url.
+                inst.host
                     .as_deref()
                     .map(|h| iris.base_url.contains(h))
-                    .unwrap_or(false),
+                    .unwrap_or(false)
             };
             if matches {
                 return (inst.role.clone(), name.clone());
