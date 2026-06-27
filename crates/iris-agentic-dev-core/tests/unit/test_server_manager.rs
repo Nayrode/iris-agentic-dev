@@ -163,7 +163,11 @@ fn select_server_empty_profiles_returns_ambiguous() {
 // AUTHENTICATION_PROVIDER = "intersystems-server-credentials"
 const SM_SERVICE: &str = "intersystems-server-credentials";
 
+// Serialize mock-store tests — set_default_store() modifies global state.
+static STORE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn with_mock_store<F: FnOnce()>(f: F) {
+    let _guard = STORE_LOCK.lock().unwrap();
     keyring_core::set_default_store(keyring_core::mock::Store::new().unwrap());
     f();
     // Reset to a fresh empty store so the next test starts clean.

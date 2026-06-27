@@ -6,6 +6,9 @@ use iris_agentic_dev_core::iris::workspace_config::{
 };
 use std::io::Write;
 
+// Serialize tests that mutate env vars — concurrent set/remove_var calls race.
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn write_toml(dir: &tempfile::TempDir, contents: &str) {
     let path = dir.path().join(".iris-agentic-dev.toml");
     let mut f = std::fs::File::create(&path).unwrap();
@@ -147,6 +150,7 @@ fn test_workspace_config_namespace_applied() {
 
 #[test]
 fn test_workspace_config_sets_iris_container_env() {
+    let _guard = ENV_LOCK.lock().unwrap();
     std::env::remove_var("IRIS_CONTAINER");
     let cfg = iris_agentic_dev_core::iris::workspace_config::WorkspaceConfig {
         container: Some("mytest-iris".to_string()),
@@ -165,6 +169,7 @@ fn test_workspace_config_sets_iris_container_env() {
 
 #[test]
 fn test_compile_workspace_config_overrides_env() {
+    let _guard = ENV_LOCK.lock().unwrap();
     // Set IRIS_CONTAINER to an "old" value via env
     std::env::set_var("IRIS_CONTAINER", "old-container");
 
