@@ -156,6 +156,12 @@ fn select_server_empty_profiles_returns_ambiguous() {
 // Uses keyring_core mock store: set_default_store() injects an in-memory store;
 // the real keyring::Entry::new/get_password/set_password calls hit it.
 // Each test must reset the store to avoid cross-test contamination.
+//
+// Keychain service name: "intersystems-server-credentials" — the auth provider ID
+// registered by intersystems-community.servermanager in all VS Code-compatible IDEs.
+// Confirmed from: ~/.vscode/extensions/intersystems-community.servermanager-*/dist/extension.js
+// AUTHENTICATION_PROVIDER = "intersystems-server-credentials"
+const SM_SERVICE: &str = "intersystems-server-credentials";
 
 fn with_mock_store<F: FnOnce()>(f: F) {
     keyring_core::set_default_store(keyring_core::mock::Store::new().unwrap());
@@ -167,9 +173,9 @@ fn with_mock_store<F: FnOnce()>(f: F) {
 #[test]
 fn resolve_credential_mock_store_found() {
     with_mock_store(|| {
-        // Seed the mock store via keyring_core::Entry (bypasses v1 Once guard)
+        // Seed using the confirmed SM service name (bypasses v1 Once guard)
         let entry =
-            keyring_core::Entry::new("vscode", "credentialProvider:dev-local/_system").unwrap();
+            keyring_core::Entry::new(SM_SERVICE, "credentialProvider:dev-local/_system").unwrap();
         entry.set_password("test-password-123").unwrap();
 
         let result = resolve_credential("dev-local", "_SYSTEM");
@@ -273,84 +279,44 @@ fn check_config_sm_latency_when_not_installed() {
     );
 }
 
-// ── Multi-IDE service name probe tests ─────────────────────────────────────
-// These tests touch the global mock store and must run serially via STORE_LOCK.
-
-static STORE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-fn with_isolated_mock_store<F: FnOnce()>(f: F) {
-    let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    keyring_core::set_default_store(keyring_core::mock::Store::new().unwrap());
-    f();
-    keyring_core::set_default_store(keyring_core::mock::Store::new().unwrap());
-}
+// ── Service name verification tests ─────────────────────────────────────────
+// The SM extension uses "intersystems-server-credentials" as its auth provider ID —
+// this is the OS keychain service name for ALL VS Code-compatible forks (Cursor,
+// Windsurf, VS Code Insiders, VSCodium). Confirmed from extension source.
 
 #[test]
-fn resolve_credential_cursor_service_name() {
-    with_isolated_mock_store(|| {
-        // Seed under "cursor" service only — simulates Cursor IDE SM extension
-        let entry =
-            keyring_core::Entry::new("cursor", "credentialProvider:dev-local/_system").unwrap();
-        entry.set_password("cursor-password").unwrap();
+fn resolve_credential_correct_service_name_used() {
+    with_mock_store(|| {
+        // Credential ONLY exists under the correct SM service name.
+        // If resolve_credential probes a wrong name it will return CredentialNotFound.
+        let entry = keyring_core::Entry::new(SM_SERVICE, "credentialProvider:prod-server/svc_user")
+            .unwrap();
+        entry.set_password("prod-secret").unwrap();
 
-        let result = resolve_credential("dev-local", "_SYSTEM");
+        let result = resolve_credential("prod-server", "svc_user");
         assert!(
             result.is_ok(),
-            "credential stored under 'cursor' service must resolve: {result:?}"
+            "must find credential under '{SM_SERVICE}' service: {result:?}"
         );
-        assert_eq!(result.unwrap(), "cursor-password");
+        assert_eq!(result.unwrap(), "prod-secret");
     });
 }
 
 #[test]
-fn resolve_credential_windsurf_service_name() {
-    with_isolated_mock_store(|| {
-        // Seed under "windsurf" service only — simulates Windsurf IDE SM extension
+fn resolve_credential_username_lowercased_in_account_key() {
+    with_mock_store(|| {
+        // Account key uses lowercase username — seed with lowercase, query with uppercase
         let entry =
-            keyring_core::Entry::new("windsurf", "credentialProvider:dev-local/_system").unwrap();
-        entry.set_password("windsurf-password").unwrap();
+            keyring_core::Entry::new(SM_SERVICE, "credentialProvider:dev-local/_system").unwrap();
+        entry.set_password("lowercase-test").unwrap();
 
+        // Caller passes "_SYSTEM" (uppercase) — must be lowercased to "_system" internally
         let result = resolve_credential("dev-local", "_SYSTEM");
         assert!(
             result.is_ok(),
-            "credential stored under 'windsurf' service must resolve: {result:?}"
+            "uppercase username must match lowercase key: {result:?}"
         );
-        assert_eq!(result.unwrap(), "windsurf-password");
-    });
-}
-
-#[test]
-fn resolve_credential_vscode_insiders_service_name() {
-    with_isolated_mock_store(|| {
-        // Seed under "vscode-insiders" only — last in probe order
-        let entry =
-            keyring_core::Entry::new("vscode-insiders", "credentialProvider:dev-local/_system")
-                .unwrap();
-        entry.set_password("insiders-password").unwrap();
-
-        let result = resolve_credential("dev-local", "_SYSTEM");
-        assert!(
-            result.is_ok(),
-            "credential stored under 'vscode-insiders' service must resolve: {result:?}"
-        );
-        assert_eq!(result.unwrap(), "insiders-password");
-    });
-}
-
-#[test]
-fn resolve_credential_vscode_wins_over_cursor_when_both_present() {
-    with_isolated_mock_store(|| {
-        // Both seeded — vscode is first in IDE_SERVICE_NAMES probe order
-        let vscode =
-            keyring_core::Entry::new("vscode", "credentialProvider:dev-local/_system").unwrap();
-        vscode.set_password("vscode-password").unwrap();
-        let cursor =
-            keyring_core::Entry::new("cursor", "credentialProvider:dev-local/_system").unwrap();
-        cursor.set_password("cursor-password").unwrap();
-
-        let result = resolve_credential("dev-local", "_SYSTEM");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "vscode-password", "vscode probed first");
+        assert_eq!(result.unwrap(), "lowercase-test");
     });
 }
 
