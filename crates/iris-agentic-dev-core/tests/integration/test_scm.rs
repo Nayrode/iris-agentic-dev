@@ -1,5 +1,5 @@
 //! T016-T017, T025, T030: Integration tests for SCM tools and open_uri.
-//! Run: IRIS_HOST=localhost IRIS_WEB_PORT=52780 IRIS_USERNAME=SuperUser IRIS_PASSWORD=SYS cargo test --test test_scm
+//! Run: IRIS_HOST=localhost IRIS_WEB_PORT=52780 IRIS_USERNAME=_SYSTEM IRIS_PASSWORD=SYS cargo test --test test_scm
 #![allow(dead_code, clippy::zombie_processes)]
 
 use std::io::{BufRead, BufReader, Write};
@@ -97,7 +97,7 @@ fn iris_env() -> Vec<(&'static str, String)> {
         ),
         (
             "IRIS_USERNAME",
-            std::env::var("IRIS_USERNAME").unwrap_or_else(|_| "SuperUser".into()),
+            std::env::var("IRIS_USERNAME").unwrap_or_else(|_| "_SYSTEM".into()),
         ),
         (
             "IRIS_PASSWORD",
