@@ -17,29 +17,29 @@ Phase 2 foundational helpers block all US phases.
 
 **⚠️ CRITICAL**: All user story phases depend on these — complete before any US work.
 
-- [ ] T001 Add `pub async fn handle_iris_message_body(...)` stub in
+- [X] T001 Add `pub async fn handle_iris_message_body(...)` stub in
       `crates/iris-agentic-dev-core/src/tools/interop.rs` — returns `not_implemented` JSON
-- [ ] T002 Add `pub async fn handle_iris_business_rule_info(...)` stub in
+- [X] T002 Add `pub async fn handle_iris_business_rule_info(...)` stub in
       `crates/iris-agentic-dev-core/src/tools/interop.rs` — returns `not_implemented` JSON
-- [ ] T003 Add `pub async fn handle_iris_production_diff(...)` stub in
+- [X] T003 Add `pub async fn handle_iris_production_diff(...)` stub in
       `crates/iris-agentic-dev-core/src/tools/interop.rs` — returns `not_implemented` JSON
-- [ ] T004 Route `"iris_message_body"`, `"iris_business_rule_info"`, `"iris_production_diff"`
+- [X] T004 Route `"iris_message_body"`, `"iris_business_rule_info"`, `"iris_production_diff"`
       in the tool dispatch match arm in `crates/iris-agentic-dev-core/src/tools/mod.rs`
-- [ ] T005 Add all three tool names to `registered_tool_names()` in
+- [X] T005 Add all three tool names to `registered_tool_names()` in
       `crates/iris-agentic-dev-core/src/tools/mod.rs`
-- [ ] T006 Add `"iris_message_body"`, `"iris_business_rule_info"`, `"iris_production_diff"`
+- [X] T006 Add `"iris_message_body"`, `"iris_business_rule_info"`, `"iris_production_diff"`
       → `ToolCategory::Query` in `tool_to_category()` in
       `crates/iris-agentic-dev-core/src/iris/server_manager.rs`
-- [ ] T007 Add MCP tool schemas for all three tools in `mod.rs`:
+- [X] T007 Add MCP tool schemas for all three tools in `mod.rs`:
       - `iris_message_body`: `message_id` (string, required), `namespace` (string, optional),
         `max_bytes` (integer, optional, default 65536), `acknowledgePhi` (bool, optional)
       - `iris_business_rule_info`: `action` (enum: list|get, required), `rule_name` (string,
         required for get), `namespace` (string, optional)
       - `iris_production_diff`: `production` (string, optional), `namespace` (string, optional)
-- [ ] T008 Add all three tools to the `Toolset::Merged` tier in `mod.rs` — both
+- [X] T008 Add all three tools to the `Toolset::Merged` tier in `mod.rs` — both
       `with_registry_and_toolset()` Merged removal list AND `registered_tool_names()` must
       stay in sync
-- [ ] T009 Run `cargo build -p iris-agentic-dev-core` — confirm clean compile with stubs
+- [X] T009 Run `cargo build -p iris-agentic-dev-core` — confirm clean compile with stubs
 
 **Checkpoint**: All three tools registered in Merged tier, route to stubs, compile clean.
 
@@ -52,17 +52,17 @@ truncation shape, content type detection.
 
 **⚠️ CRITICAL**: US1 phase depends on these helpers.
 
-- [ ] T010 Implement `redact_hl7v2(body: &str) -> String` in `interop.rs` — replaces
+- [X] T010 Implement `redact_hl7v2(body: &str) -> String` in `interop.rs` — replaces
       PHI fields (PID-3, PID-5, PID-7, PID-8, PID-11, PID-18, MSH-3) with `[REDACTED]`
       using the same segment/field parsing as spec 051 audit log scrubbing. Returns input
       unchanged for non-HL7 content.
-- [ ] T011 Implement `detect_content_type(body: &str) -> &'static str` in `interop.rs` —
+- [X] T011 Implement `detect_content_type(body: &str) -> &'static str` in `interop.rs` —
       returns `"HL7v2"` if body starts with `"MSH|"`, `"JSON"` if starts with `{` or `[`,
       `"XML"` if starts with `<`, `"binary"` if non-UTF8, else `"text"`.
-- [ ] T012 Implement `truncate_body(body: &str, max_bytes: usize) -> (String, bool, usize)`
+- [X] T012 Implement `truncate_body(body: &str, max_bytes: usize) -> (String, bool, usize)`
       in `interop.rs` — returns `(truncated_content, was_truncated, original_byte_len)`.
       Truncates at UTF-8 char boundary at or before `max_bytes`.
-- [ ] T013 Run `cargo test -p iris-agentic-dev-core` — confirm all pre-existing tests still
+- [X] T013 Run `cargo test -p iris-agentic-dev-core` — confirm all pre-existing tests still
       pass
 
 **Checkpoint**: Shared helpers exist and compile. HL7 redaction, truncation, content type
@@ -81,36 +81,36 @@ instance. Verify HL7 content returned. Call with an unknown ID — verify `MESSA
 
 > Write FIRST. Must FAIL before T025.
 
-- [ ] T014 [US1] Create `crates/iris-agentic-dev-core/tests/unit/test_interop_depth_unit.rs`
+- [X] T014 [US1] Create `crates/iris-agentic-dev-core/tests/unit/test_interop_depth_unit.rs`
       — test `redact_hl7v2`: PID segment with PID-5 set → PID-5 replaced with `[REDACTED]`;
       non-HL7 string → returned unchanged
-- [ ] T015 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `detect_content_type`:
+- [X] T015 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `detect_content_type`:
       `"MSH|^~\\&|..."` → `"HL7v2"`; `"<PRPA>"` → `"XML"`; `"{\"key\":1}"` → `"JSON"`;
       `"plain text"` → `"text"`
-- [ ] T016 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `truncate_body` with
+- [X] T016 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `truncate_body` with
       100-byte string and `max_bytes=50` → returns 50-byte string with `was_truncated=true`
       and `original_byte_len=100`; with `max_bytes=200` → returns full string with
       `was_truncated=false`
-- [ ] T017 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
+- [X] T017 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
       with missing `message_id` param → structured error with `error_code` field (not panic)
-- [ ] T018 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
+- [X] T018 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
       with `dataPolicy=block` (mocked gate) → returns `PHI_POLICY_BLOCKED` before any IRIS
       call
-- [ ] T019 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
+- [X] T019 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
       with `dataPolicy=allow` and no `acknowledgePhi` → returns `PHI_ACK_REQUIRED` error
-- [ ] T020 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
+- [X] T020 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
       with `max_bytes=0` → clamped to 1 (no error); `max_bytes=2000000` → clamped to
       1048576 with `max_bytes_clamped: true`
-- [ ] T021 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
+- [X] T021 [P] [US1] Add unit test to `test_interop_depth_unit.rs` — `iris_message_body`
       on `mcpTemplate=live` policy (mocked gate, `dataPolicy=allow`, `acknowledgePhi=true`)
       → NOT blocked (Query category)
-- [ ] T022 [US1] Create `crates/iris-agentic-dev-core/tests/integration/test_interop_depth_live.rs`
+- [X] T022 [US1] Create `crates/iris-agentic-dev-core/tests/integration/test_interop_depth_live.rs`
       — `#[ignore]`; fetch a message with known ID on live IRIS; assert `content_type` is
       non-empty; assert `body` is non-empty; assert `success: true`
 
 ### Implementation for US1
 
-- [ ] T023 [US1] Implement `handle_iris_message_body` in `interop.rs`:
+- [X] T023 [US1] Implement `handle_iris_message_body` in `interop.rs`:
   - Parse `message_id` (required — return `INVALID_MESSAGE_ID` if non-integer),
     `namespace`, `max_bytes` (default 65536, clamp to 1MB), `acknowledgePhi`
   - Enforce PHI policy: `block` → `PHI_POLICY_BLOCKED`; `allow` without `acknowledgePhi`
@@ -121,7 +121,7 @@ instance. Verify HL7 content returned. Call with an unknown ID — verify `MESSA
   - Apply `detect_content_type()` to classify the body string
   - For `dataPolicy=redact`: apply `redact_hl7v2()` to the body before returning
   - Return `{success, message_id, content_type, body, truncated, actual_size}`
-- [ ] T024 [US1] Run `cargo test -p iris-agentic-dev-core test_interop_depth` — all US1
+- [X] T024 [US1] Run `cargo test -p iris-agentic-dev-core test_interop_depth` — all US1
       unit tests must pass
 
 **Checkpoint**: US1 complete. `iris_message_body` returns body/content_type with PHI gates
@@ -140,22 +140,22 @@ with Ensemble configured. Expect a non-empty `rules` array.
 
 > Write FIRST. Must FAIL before T030.
 
-- [ ] T025 [P] [US2] Add unit test to `test_interop_depth_unit.rs` — `iris_business_rule_info`
+- [X] T025 [P] [US2] Add unit test to `test_interop_depth_unit.rs` — `iris_business_rule_info`
       with `action=get` and missing `rule_name` → structured error (not panic)
-- [ ] T026 [P] [US2] Add unit test to `test_interop_depth_unit.rs` — `iris_business_rule_info`
+- [X] T026 [P] [US2] Add unit test to `test_interop_depth_unit.rs` — `iris_business_rule_info`
       with invalid `action` value → structured error with `error_code: "INVALID_ACTION"`
-- [ ] T027 [P] [US2] Add unit test to `test_interop_depth_unit.rs` — `iris_business_rule_info`
+- [X] T027 [P] [US2] Add unit test to `test_interop_depth_unit.rs` — `iris_business_rule_info`
       on `mcpTemplate=live` (mocked gate) → NOT blocked (Query category)
-- [ ] T028 [US2] Add integration test to `test_interop_depth_live.rs` — `#[ignore]`;
+- [X] T028 [US2] Add integration test to `test_interop_depth_live.rs` — `#[ignore]`;
       `action=list` on namespace with Ensemble → `rules` array non-empty OR empty (both
       valid); `success: true`; no IRIS exception
-- [ ] T029 [US2] Add integration test to `test_interop_depth_live.rs` — `#[ignore]`;
+- [X] T029 [US2] Add integration test to `test_interop_depth_live.rs` — `#[ignore]`;
       `action=get` on non-existent rule name → `RULE_NOT_FOUND` error code (not panic,
       not generic IRIS exception)
 
 ### Implementation for US2
 
-- [ ] T030 [US2] Implement `handle_iris_business_rule_info` in `interop.rs`:
+- [X] T030 [US2] Implement `handle_iris_business_rule_info` in `interop.rs`:
   - Parse `action` (required, enum list|get — return `INVALID_ACTION` for unknown values),
     `rule_name` (required for `get`), `namespace`
   - Call `dispatch_gate()` with `ToolCategory::Query`
@@ -165,7 +165,7 @@ with Ensemble configured. Expect a non-empty `rules` array.
   - `get` action: open rule by name (attempt `##class(EnsLib.Rules.RuleDefinition).%OpenId`
     or query by `Name`); return `RULE_NOT_FOUND` if absent; serialize `conditions` and
     `actions` arrays from rule definition properties
-- [ ] T031 [US2] Run `cargo test -p iris-agentic-dev-core test_interop_depth` — all US1+US2
+- [X] T031 [US2] Run `cargo test -p iris-agentic-dev-core test_interop_depth` — all US1+US2
       unit tests pass
 
 **Checkpoint**: US2 complete. `iris_business_rule_info list` returns rule catalog;
@@ -184,24 +184,24 @@ recent changes. Expect `in_sync: true`, `changes: []`.
 
 > Write FIRST. Must FAIL before T037.
 
-- [ ] T032 [P] [US3] Add unit test to `test_interop_depth_unit.rs` — `iris_production_diff`
+- [X] T032 [P] [US3] Add unit test to `test_interop_depth_unit.rs` — `iris_production_diff`
       on `mcpTemplate=live` (mocked gate) → NOT blocked (Query category)
-- [ ] T033 [P] [US3] Add unit test to `test_interop_depth_unit.rs` — diff logic:
+- [X] T033 [P] [US3] Add unit test to `test_interop_depth_unit.rs` — diff logic:
       two identical item lists → `in_sync: true`, `changes: []`
-- [ ] T034 [P] [US3] Add unit test to `test_interop_depth_unit.rs` — diff logic:
+- [X] T034 [P] [US3] Add unit test to `test_interop_depth_unit.rs` — diff logic:
       current has one extra item not in SCM → `changes` contains one entry with
       `status: "added"`
-- [ ] T035 [P] [US3] Add unit test to `test_interop_depth_unit.rs` — diff logic:
+- [X] T035 [P] [US3] Add unit test to `test_interop_depth_unit.rs` — diff logic:
       SCM has one item not in current → `changes` contains one entry with
       `status: "removed"`
-- [ ] T036 [US3] Add integration test to `test_interop_depth_live.rs` — `#[ignore]`;
+- [X] T036 [US3] Add integration test to `test_interop_depth_live.rs` — `#[ignore]`;
       call `iris_production_diff` on namespace with no SCM → `NO_SCM` or `NO_SCM_VERSION`
       error code (acceptable; validates error path not panic); OR on SCM-enabled namespace
       with no changes → `in_sync: true`
 
 ### Implementation for US3
 
-- [ ] T037 [US3] Implement `handle_iris_production_diff` in `interop.rs`:
+- [X] T037 [US3] Implement `handle_iris_production_diff` in `interop.rs`:
   - Parse `production` (optional — defaults to running production), `namespace`
   - Call `dispatch_gate()` with `ToolCategory::Query`
   - Build ObjectScript: check SCM configuration via `%Studio.SourceControl.GetStatus`
@@ -211,7 +211,7 @@ recent changes. Expect `in_sync: true`, `changes: []`.
   - Diff: compute added/removed/modified using item name as key; modified if properties
     differ (enabled flag, class, settings)
   - Return `{success, in_sync, changes: [{item_name, item_type, status}]}`
-- [ ] T038 [US3] Run `cargo test -p iris-agentic-dev-core test_interop_depth` — all
+- [X] T038 [US3] Run `cargo test -p iris-agentic-dev-core test_interop_depth` — all
       US1–US3 unit tests pass
 
 **Checkpoint**: US3 complete. `iris_production_diff` returns change set; `NO_SCM` on
@@ -224,20 +224,20 @@ unconfigured instances; `in_sync: true` when clean.
 **Purpose**: PHI/gate integration tests, check_config inventory, AGENTS.md update, final
 test run and fmt/clippy pass.
 
-- [ ] T039 Add PHI gate integration test to `test_interop_depth_live.rs` — `#[ignore]`;
+- [X] T039 Add PHI gate integration test to `test_interop_depth_live.rs` — `#[ignore]`;
       call `iris_message_body` with `dataPolicy=block` (set via env) → `PHI_POLICY_BLOCKED`;
       call with `dataPolicy=allow`, `acknowledgePhi=true` → attempt proceeds (may fail with
       `MESSAGE_NOT_FOUND` if no test message, but gate must not block)
-- [ ] T040 [P] Verify all three tools appear in `check_config` tool inventory — add assertions
+- [X] T040 [P] Verify all three tools appear in `check_config` tool inventory — add assertions
       to `test_server_manager.rs` that `registered_tool_names()` contains `"iris_message_body"`,
       `"iris_business_rule_info"`, `"iris_production_diff"`
-- [ ] T041 [P] Update `light-skills/AGENTS.md` — add all three tools to the MCP tool
+- [X] T041 [P] Update `light-skills/AGENTS.md` — add all three tools to the MCP tool
       reference section with usage examples; include PHI policy notes for `iris_message_body`
-- [ ] T042 Run full test suite: `cargo test -p iris-agentic-dev-core` — all non-ignored
+- [X] T042 Run full test suite: `cargo test -p iris-agentic-dev-core` — all non-ignored
       tests pass, zero regressions
-- [ ] T043 Run `cargo fmt --all -- --check` — no formatting diff
-- [ ] T044 Run `cargo clippy -p iris-agentic-dev-core -- -D warnings` — zero warnings
-- [ ] T045 [P] Update spec status to `Status: Implemented` in
+- [X] T043 Run `cargo fmt --all -- --check` — no formatting diff
+- [X] T044 Run `cargo clippy -p iris-agentic-dev-core -- -D warnings` — zero warnings
+- [X] T045 [P] Update spec status to `Status: Implemented` in
       `specs/056-interop-depth/spec.md`
 
 ---

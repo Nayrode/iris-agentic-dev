@@ -2,7 +2,7 @@
 
 **Feature Branch**: `056-interop-depth`
 **Created**: 2026-06-29
-**Status**: Draft
+**Status**: Implemented
 **Depends on**: 051 (PHI policy and env gates — merged to master)
 
 ## Overview
