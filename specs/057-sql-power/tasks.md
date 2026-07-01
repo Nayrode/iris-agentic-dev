@@ -16,16 +16,16 @@ US3 = write (P2). Phase 2 foundational wiring blocks all US phases.
 
 **CRITICAL**: All user story phases depend on these — complete before any US work.
 
-- [ ] T001 Add `mode: Option<String>` field to `QueryParams` struct in
+- [X] T001 Add `mode: Option<String>` field to `QueryParams` struct in
       `crates/iris-agentic-dev-core/src/tools/mod.rs` (default `"read"` when absent);
       add `max_rows_affected: Option<u32>` field (default 1000 when absent); ensure both
       fields are `serde(default)` compatible
-- [ ] T002 Update the `iris_query` tool `#[tool(description = ...)]` attribute to mention
+- [X] T002 Update the `iris_query` tool `#[tool(description = ...)]` attribute to mention
       all four modes (`read`, `explain`, `count`, `write`) with a one-line description each
-- [ ] T003 Add a `match p.mode.as_deref().unwrap_or("read") { ... }` dispatch skeleton
+- [X] T003 Add a `match p.mode.as_deref().unwrap_or("read") { ... }` dispatch skeleton
       inside `iris_query` after the existing role-gate block; default arm falls through to
       existing read-mode logic; other arms return `not_implemented` JSON stubs
-- [ ] T004 Run `cargo build -p iris-agentic-dev-core` — confirm clean compile with all
+- [X] T004 Run `cargo build -p iris-agentic-dev-core` — confirm clean compile with all
       new param fields and stub dispatch
 
 **Checkpoint**: `iris_query` accepts `mode` param, dispatches to stubs, compiles clean.
@@ -38,16 +38,16 @@ US3 = write (P2). Phase 2 foundational wiring blocks all US phases.
 
 **CRITICAL**: Gate wiring must be correct before write mode can be tested.
 
-- [ ] T005 Update `check_env_gate()` in
+- [X] T005 Update `check_env_gate()` in
       `crates/iris-agentic-dev-core/src/policy/env_gate.rs` to handle `iris_query` write
       mode: after `tool_to_category_pub()` returns `Query` for `iris_query`, add check:
       if `tool_name == "iris_query"` AND `params["mode"].as_str() == Some("write")`,
       override category to `ToolCategory::Execute`. Follow same pattern as `iris_global`
       action-aware classification (already in place from spec 052)
-- [ ] T006 Update `dispatch_gate()` call site in `iris_query` to pass `mode` in the
+- [X] T006 Update `dispatch_gate()` call site in `iris_query` to pass `mode` in the
       `params_json`: `serde_json::json!({ "namespace": p.namespace, "mode": p.mode })`
       so the gate receives the mode value for Execute classification
-- [ ] T007 Implement `pub fn validate_dml_sql(sql: &str) -> Result<(), String>` in
+- [X] T007 Implement `pub fn validate_dml_sql(sql: &str) -> Result<(), String>` in
       `crates/iris-agentic-dev-core/src/tools/mod.rs` — mirrors the processing pipeline
       of `validate_read_only_sql`:
       - Strip block and line comments; check empty → `Err("EMPTY")`
@@ -56,7 +56,7 @@ US3 = write (P2). Phase 2 foundational wiring blocks all US phases.
       - If token is SELECT → `Err("SELECT_IN_WRITE")`
       - If token is DML (INSERT/UPDATE/DELETE/CALL/TRUNCATE) → `Ok(())`
       - Otherwise → `Err("UNKNOWN_STATEMENT")`
-- [ ] T008 Run `cargo test -p iris-agentic-dev-core` — confirm all pre-existing tests still
+- [X] T008 Run `cargo test -p iris-agentic-dev-core` — confirm all pre-existing tests still
       pass after `check_env_gate` and `dispatch_gate` param changes
 
 **Checkpoint**: Gate classifies write mode as Execute; `validate_dml_sql` exists and compiles.
@@ -74,37 +74,37 @@ US3 = write (P2). Phase 2 foundational wiring blocks all US phases.
 
 > Write FIRST. Must FAIL before T017.
 
-- [ ] T009 [US1] Create `crates/iris-agentic-dev-core/tests/unit/test_sql_power_unit.rs` —
+- [X] T009 [US1] Create `crates/iris-agentic-dev-core/tests/unit/test_sql_power_unit.rs` —
       test `validate_dml_sql` with allowed DML: `INSERT INTO t VALUES (1)` → `Ok(())`;
       `UPDATE t SET x=1` → `Ok(())`; `DELETE FROM t` → `Ok(())`; `CALL myproc()` → `Ok(())`;
       `TRUNCATE TABLE t` → `Ok(())`
-- [ ] T010 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `validate_dml_sql` blocks
+- [X] T010 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `validate_dml_sql` blocks
       DDL: `CREATE TABLE t (...)` → `Err("CREATE")`; `DROP TABLE t` → `Err("DROP")`;
       `ALTER TABLE t ADD col INT` → `Err("ALTER")`; `GRANT SELECT ON t TO u` → `Err("GRANT")`;
       `REVOKE SELECT ON t FROM u` → `Err("REVOKE")`
-- [ ] T011 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `validate_dml_sql` blocks
+- [X] T011 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `validate_dml_sql` blocks
       SELECT: `SELECT * FROM t` → `Err("SELECT_IN_WRITE")`; empty input → `Err("EMPTY")`;
       comment-only → `Err("EMPTY")`; DML with inner SELECT subquery → `Ok(())`
       (e.g. `INSERT INTO t SELECT * FROM src` — outer statement is INSERT)
-- [ ] T012 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `mode="explain"` with
+- [X] T012 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `mode="explain"` with
       non-SELECT query `"INSERT INTO t VALUES (1)"` → `EXPLAIN_REQUIRES_SELECT` error code
       returned before gate fires (no IRIS call)
-- [ ] T013 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `mode="explain"` with
+- [X] T013 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `mode="explain"` with
       empty query → `EMPTY_QUERY` error code
-- [ ] T014 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `mode="explain"` on
+- [X] T014 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `mode="explain"` on
       `mcpTemplate=live` policy does NOT return `ENV_GATE_BLOCKED` (explain is Query,
       permitted by live); mock gate returns `Ok(())` for live + Query
-- [ ] T015 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `query_hash` helper:
+- [X] T015 [P] [US1] Add unit test to `test_sql_power_unit.rs` — `query_hash` helper:
       same query string → same hash; same query with different whitespace → same hash;
       different queries → different hashes (collision would be acceptable here)
-- [ ] T016 [US1] Create `crates/iris-agentic-dev-core/tests/integration/test_sql_power_live.rs`
+- [X] T016 [US1] Create `crates/iris-agentic-dev-core/tests/integration/test_sql_power_live.rs`
       — `#[ignore]`; call `iris_query` with `mode="explain"`,
       `query="SELECT * FROM Sample.Person"` on live IRIS; assert `plan_text` is non-empty
       string; assert `query_hash` is a 16-char hex string
 
 ### Implementation for US1
 
-- [ ] T017 [US1] Implement `explain` arm in the mode dispatch:
+- [X] T017 [US1] Implement `explain` arm in the mode dispatch:
       - Validate query is non-empty → `EMPTY_QUERY`
       - Validate first keyword is SELECT or WITH → else `EXPLAIN_REQUIRES_SELECT`
       - Build explain query: `EXPLAIN <query>`
@@ -114,7 +114,7 @@ US3 = write (P2). Phase 2 foundational wiring blocks all US phases.
         fail, return `EXPLAIN_NOT_SUPPORTED` with IRIS version in message
       - Compute `query_hash` from normalized query (uppercase, collapse whitespace)
       - Return `{ "success": true, "plan_text": ..., "query_hash": ... }`
-- [ ] T018 [US1] Run `cargo test -p iris-agentic-dev-core test_sql_power` — all US1 unit
+- [X] T018 [US1] Run `cargo test -p iris-agentic-dev-core test_sql_power` — all US1 unit
       tests must pass
 
 **Checkpoint**: US1 complete. `iris_query explain` returns plan_text + query_hash.
@@ -132,23 +132,23 @@ Verify `count` integer returned with no `rows` field.
 
 > Write FIRST. Must FAIL before T024.
 
-- [ ] T019 [P] [US2] Add unit test to `test_sql_power_unit.rs` — `mode="count"` with
+- [X] T019 [P] [US2] Add unit test to `test_sql_power_unit.rs` — `mode="count"` with
       neither `table` nor `query` param → `MISSING_TARGET` error code before IRIS call
-- [ ] T020 [P] [US2] Add unit test to `test_sql_power_unit.rs` — `mode="count"` with
+- [X] T020 [P] [US2] Add unit test to `test_sql_power_unit.rs` — `mode="count"` with
       `table` param builds query `SELECT COUNT(*) FROM <table>` correctly; verify by
       checking the generated query string (extract as a testable helper)
-- [ ] T021 [P] [US2] Add unit test to `test_sql_power_unit.rs` — `mode="count"` with
+- [X] T021 [P] [US2] Add unit test to `test_sql_power_unit.rs` — `mode="count"` with
       `query` param builds `SELECT COUNT(*) FROM (<query>) t` correctly
-- [ ] T022 [P] [US2] Add unit test to `test_sql_power_unit.rs` — `mode="count"` on
+- [X] T022 [P] [US2] Add unit test to `test_sql_power_unit.rs` — `mode="count"` on
       `mcpTemplate=live` does NOT return `ENV_GATE_BLOCKED` (count is Query category)
-- [ ] T023 [US2] Add integration test to `test_sql_power_live.rs` — `#[ignore]`;
+- [X] T023 [US2] Add integration test to `test_sql_power_live.rs` — `#[ignore]`;
       call `iris_query` with `mode="count"`, `table="Sample.Person"`;
       also call `mode="read"` with `query="SELECT COUNT(*) FROM Sample.Person"`;
       assert count values match; assert count mode response has no `rows` field
 
 ### Implementation for US2
 
-- [ ] T024 [US2] Implement `count` arm in mode dispatch:
+- [X] T024 [US2] Implement `count` arm in mode dispatch:
       - Check `p.table` and `p.query` — `MISSING_TARGET` if both absent
       - `p.query` takes precedence: build `SELECT COUNT(*) FROM (<query>) t`
       - `p.table` only: build `SELECT COUNT(*) FROM <table>`
@@ -156,7 +156,7 @@ Verify `count` integer returned with no `rows` field.
       - Extract count from `result.content[0]["Aggregate_1"]` or first column of first row
       - Return `{ "success": true, "count": <integer> }`
       - On SQL error: return `SQL_ERROR` with IRIS message
-- [ ] T025 [US2] Run `cargo test -p iris-agentic-dev-core test_sql_power` — all US1+US2
+- [X] T025 [US2] Run `cargo test -p iris-agentic-dev-core test_sql_power` — all US1+US2
       unit tests pass
 
 **Checkpoint**: US2 complete. `iris_query count` returns integer count; no row data.
@@ -175,23 +175,23 @@ Then test UPDATE with 1500 matching rows → `ROWS_LIMIT_EXCEEDED`.
 
 > Write FIRST. Must FAIL before T034.
 
-- [ ] T026 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` on
+- [X] T026 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` on
       `mcpTemplate=live` → `ENV_GATE_BLOCKED`
-- [ ] T027 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` on
+- [X] T027 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` on
       `mcpTemplate=test` → `ENV_GATE_BLOCKED` (Execute blocked on test too)
-- [ ] T028 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` with
+- [X] T028 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` with
       DDL statement `"CREATE TABLE t (id INT)"` → `DDL_NOT_ALLOWED` with
       `blocked_keyword: "CREATE"`
-- [ ] T029 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` with
+- [X] T029 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` with
       SELECT statement → `SELECT_NOT_ALLOWED_IN_WRITE` error
-- [ ] T030 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `max_rows_affected`
+- [X] T030 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `max_rows_affected`
       clamping: value 0 → treated as 1000; value 99999 → clamped to 10000
-- [ ] T031 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` with
+- [X] T031 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` with
       empty query → `EMPTY_QUERY`
-- [ ] T032 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` with
+- [X] T032 [P] [US3] Add unit test to `test_sql_power_unit.rs` — `mode="write"` with
       `force=true` includes `force_ignored: true` in any non-error response
       (force has no effect in write mode)
-- [ ] T033 [US3] Add integration tests to `test_sql_power_live.rs` — `#[ignore]`:
+- [X] T033 [US3] Add integration tests to `test_sql_power_live.rs` — `#[ignore]`:
       - INSERT into `IrisDevTest.SqlPower` → `rows_affected=1`; verify via count; cleanup
       - UPDATE 1500 rows (seeded by setup) → `ROWS_LIMIT_EXCEEDED` with correct `actual_count`
       - UPDATE same 1500 rows with `max_rows_affected=2000` → succeeds with `rows_affected=1500`
@@ -200,7 +200,7 @@ Then test UPDATE with 1500 matching rows → `ROWS_LIMIT_EXCEEDED`.
 
 ### Implementation for US3
 
-- [ ] T034 [US3] Implement `write` arm in mode dispatch:
+- [X] T034 [US3] Implement `write` arm in mode dispatch:
       - Apply `validate_dml_sql` → return `DDL_NOT_ALLOWED`, `SELECT_NOT_ALLOWED_IN_WRITE`,
         or `EMPTY_QUERY` as appropriate
       - Clamp `max_rows_affected`: 0 → 1000, > 10000 → 10000
@@ -211,7 +211,7 @@ Then test UPDATE with 1500 matching rows → `ROWS_LIMIT_EXCEEDED`.
       - Extract `rows_affected` from response; if missing, default to 0
       - Return `{ "success": true, "rows_affected": <int> }` (plus `force_ignored: true`
         if `p.force` was set)
-- [ ] T035 [US3] Run `cargo test -p iris-agentic-dev-core test_sql_power` — all US1–US3
+- [X] T035 [US3] Run `cargo test -p iris-agentic-dev-core test_sql_power` — all US1–US3
       unit tests pass
 
 **Checkpoint**: US3 complete. DML executes; rows pre-check prevents mass updates.
@@ -222,26 +222,26 @@ Then test UPDATE with 1500 matching rows → `ROWS_LIMIT_EXCEEDED`.
 
 **Purpose**: Full test suite, error code registry, AGENTS.md update, fmt/clippy.
 
-- [ ] T036 Add new error codes to the error code registry comment block in
+- [X] T036 Add new error codes to the error code registry comment block in
       `crates/iris-agentic-dev-core/src/policy/gate.rs` (or wherever the existing registry
       lives): `EXPLAIN_REQUIRES_SELECT`, `EXPLAIN_NOT_SUPPORTED`, `MISSING_TARGET`,
       `DDL_NOT_ALLOWED`, `SELECT_NOT_ALLOWED_IN_WRITE`, `ROWS_LIMIT_EXCEEDED`,
       `ROWS_CHECK_FAILED`, `EMPTY_QUERY` (already exists — confirm not duplicated)
-- [ ] T037 [P] Add unit test to `test_sql_power_unit.rs` — `mode="read"` with INSERT
+- [X] T037 [P] Add unit test to `test_sql_power_unit.rs` — `mode="read"` with INSERT
       still returns `SQL_WRITE_BLOCKED` (regression guard for existing behavior)
-- [ ] T038 [P] Add unit test to `test_sql_power_unit.rs` — `mode="read"` omitted
+- [X] T038 [P] Add unit test to `test_sql_power_unit.rs` — `mode="read"` omitted
       (no `mode` in params) behaves identically to `mode="read"` explicit
-- [ ] T039 [P] Add unit test to `test_sql_power_unit.rs` — `mode="count"` with both
+- [X] T039 [P] Add unit test to `test_sql_power_unit.rs` — `mode="count"` with both
       `table` and `query` set: `query` takes precedence; verify generated COUNT query
       uses the subquery form, not the table form
-- [ ] T040 [P] Update `light-skills/AGENTS.md` — add documentation for new `iris_query`
+- [X] T040 [P] Update `light-skills/AGENTS.md` — add documentation for new `iris_query`
       modes: explain (usage example with SELECT), count (usage example with table param),
       write (usage example with INSERT; note about env-gate blocking on live/test)
-- [ ] T041 Run full test suite: `cargo test -p iris-agentic-dev-core` — all non-ignored
+- [X] T041 Run full test suite: `cargo test -p iris-agentic-dev-core` — all non-ignored
       tests pass, zero regressions
-- [ ] T042 Run `cargo fmt --all -- --check` — no formatting diff
-- [ ] T043 Run `cargo clippy -p iris-agentic-dev-core -- -D warnings` — zero warnings
-- [ ] T044 [P] Update spec status to `Status: Implemented` in
+- [X] T042 Run `cargo fmt --all -- --check` — no formatting diff
+- [X] T043 Run `cargo clippy -p iris-agentic-dev-core -- -D warnings` — zero warnings
+- [X] T044 [P] Update spec status to `Status: Implemented` in
       `specs/057-sql-power/spec.md`
 
 ---
