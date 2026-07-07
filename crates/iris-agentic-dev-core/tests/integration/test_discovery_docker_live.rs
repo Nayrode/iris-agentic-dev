@@ -8,7 +8,7 @@
 //! ALL tests here are `#[ignore]` — they do not run on a normal `cargo test`
 //! and must be invoked explicitly:
 //!
-//!   IRIS_HOST=localhost IRIS_PORT=52780 IRIS_USERNAME=_SYSTEM IRIS_PASSWORD=SYS \
+//!   IRIS_HOST=localhost IRIS_WEB_PORT=52780 IRIS_USERNAME=_SYSTEM IRIS_PASSWORD=SYS \
 //!     cargo test -p iris-agentic-dev-core --features testing \
 //!     --test test_discovery_docker_live -- --include-ignored --nocapture
 //!
@@ -22,9 +22,9 @@ use iris_agentic_dev_core::iris::discovery::{
 };
 
 /// Resolve the host port mapped to iris-dev-iris's private web port (52773).
-/// Falls back to the known stable value for this session if IRIS_PORT is unset.
+/// Falls back to the known stable value for this session if IRIS_WEB_PORT is unset.
 fn live_port() -> u16 {
-    std::env::var("IRIS_PORT")
+    std::env::var("IRIS_WEB_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(52780)

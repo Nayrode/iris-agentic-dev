@@ -1,5 +1,5 @@
 //! Integration tests for interop depth tools (056-interop-depth).
-//! Requires live IRIS on iris-dev-iris container (port from IRIS_HOST/IRIS_PORT env).
+//! Requires live IRIS on iris-dev-iris container (port from IRIS_HOST/IRIS_WEB_PORT env).
 //! All tests are #[ignore] — run with:
 //!   cargo test -p iris-agentic-dev-core --features testing --test test_interop_depth_live -- --include-ignored
 
@@ -21,10 +21,10 @@ fn parse_result(result: rmcp::model::CallToolResult) -> serde_json::Value {
 
 fn live_iris() -> Option<IrisConnection> {
     let host = std::env::var("IRIS_HOST").unwrap_or_else(|_| "localhost".into());
-    let port: u16 = std::env::var("IRIS_PORT")
+    let port: u16 = std::env::var("IRIS_WEB_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(52780);
+        .unwrap_or(52773);
     let user = std::env::var("IRIS_USERNAME").unwrap_or_else(|_| "_SYSTEM".into());
     let pass = std::env::var("IRIS_PASSWORD").unwrap_or_else(|_| "SYS".into());
     Some(IrisConnection::new(
