@@ -35,6 +35,27 @@ fn ok_json(v: serde_json::Value) -> Result<rmcp::model::CallToolResult, rmcp::Er
     ]))
 }
 
+/// Resolve the Atelier `files` scope for a search.
+///
+/// Atelier `/action/search` searches **nothing** unless a `files` wildcard list
+/// is supplied — omitting it returns an empty `result`, which is why unscoped
+/// searches silently returned zero hits. When the caller supplies `documents`
+/// we honour them verbatim (comma-joined); otherwise we synthesize a namespace-
+/// wide wildcard from the category so a bare `{query}` search still works.
+fn resolve_files(documents: &[String], category: &str) -> String {
+    if !documents.is_empty() {
+        return documents.join(",");
+    }
+    match category.to_ascii_uppercase().as_str() {
+        "CLS" => "*.cls".to_string(),
+        "MAC" => "*.mac".to_string(),
+        "INT" => "*.int".to_string(),
+        "INC" => "*.inc".to_string(),
+        // ALL (or anything unexpected) → every source category.
+        _ => "*.cls,*.mac,*.int,*.inc".to_string(),
+    }
+}
+
 pub async fn handle_iris_search(
     iris: &IrisConnection,
     client: &reqwest::Client,
@@ -42,11 +63,13 @@ pub async fn handle_iris_search(
     log_store: Arc<Mutex<log_store::LogStore>>,
 ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
     let category = p.category.as_deref().unwrap_or("ALL");
+    let files = resolve_files(&p.documents, category);
     let mut query_string = format!(
-        "query={}&regex={}&sys=false&category={}",
+        "query={}&regex={}&sys=false&category={}&files={}",
         urlencoding::encode(&p.query),
         p.regex,
         category,
+        urlencoding::encode(&files),
     );
     if p.case_sensitive {
         query_string.push_str("&case=1");
@@ -54,9 +77,21 @@ pub async fn handle_iris_search(
 
     let sync_url = iris.versioned_ns_url(&p.namespace, &format!("/action/search?{}", query_string));
 
-    // Try sync search with 2s timeout
+    // Try the synchronous search first. Many IRIS servers answer `/action/search`
+    // synchronously — even for broad wildcard scopes that take several seconds —
+    // and never hand back a `workId` to poll. The old 2s timeout tripped on those:
+    // a broad `Region.**.*.cls` search (~5s here) timed out, fell through to the
+    // async POST, which on those servers returns an empty `{}` (no workId) and
+    // parsed as zero hits. Give the sync path a generous, env-overridable budget so
+    // slow-but-synchronous results actually land. Async polling remains the fallback
+    // for servers that genuinely defer via workId.
+    let sync_timeout_secs = std::env::var("IRIS_SEARCH_SYNC_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(30);
     let sync_client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(sync_timeout_secs))
         .danger_accept_invalid_certs(true)
         .build()
         .unwrap_or_else(|_| client.clone());
@@ -89,12 +124,16 @@ pub async fn handle_iris_search(
         _ => {
             // Timeout or error — fall back to async POST
             let post_url = iris.versioned_ns_url(&p.namespace, "/action/search");
-            let post_body = serde_json::json!({
+            let mut post_body = serde_json::json!({
                 "query": p.query,
                 "regex": p.regex,
                 "sys": false,
                 "category": category,
+                "files": files,
             });
+            if p.case_sensitive {
+                post_body["case"] = serde_json::json!(1);
+            }
             let resp = client
                 .post(&post_url)
                 .basic_auth(&iris.username, Some(&iris.password))
@@ -176,22 +215,48 @@ fn parse_search_results(
     inline: bool,
     log_store: &Arc<Mutex<log_store::LogStore>>,
 ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-    let content = body["result"]["content"]
+    // Atelier's response shape for `/action/search` varies by API version:
+    //   • v8 (IRIS 2024+): `result` is itself the array of document entries.
+    //   • older/async:      `result.content` holds the array.
+    // Accept whichever is present so results aren't silently dropped.
+    let content = body["result"]
         .as_array()
+        .or_else(|| body["result"]["content"].as_array())
         .cloned()
         .unwrap_or_default();
-    let total = content.len();
-    let results: Vec<serde_json::Value> = content
-        .into_iter()
-        .map(|item| {
-            serde_json::json!({
-                "document": item["doc"],
-                "line": item["atLine"],
-                "member": item["member"],
-                "content": item["text"],
-            })
-        })
-        .collect();
+
+    // Atelier `/action/search` returns one entry per document. In v2 the matches
+    // are nested under a `matches[]` array (`{doc, matches:[{text, line, member}]}`);
+    // some responses/fixtures put a single match flat on the entry
+    // (`{doc, atLine, text, member}`). Flatten both into one result per match so
+    // `total_found` counts matches, not documents.
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    for item in content {
+        let doc = item["doc"].clone();
+        match item["matches"].as_array() {
+            Some(matches) if !matches.is_empty() => {
+                for m in matches {
+                    results.push(serde_json::json!({
+                        "document": doc,
+                        // v2 nested matches use `line`; tolerate `atLine` too.
+                        "line": if m["line"].is_null() { m["atLine"].clone() } else { m["line"].clone() },
+                        "member": m["member"],
+                        "content": m["text"],
+                    }));
+                }
+            }
+            _ => {
+                // Flat shape (or a document entry with no explicit matches array).
+                results.push(serde_json::json!({
+                    "document": doc,
+                    "line": if item["line"].is_null() { item["atLine"].clone() } else { item["line"].clone() },
+                    "member": item["member"],
+                    "content": item["text"],
+                }));
+            }
+        }
+    }
+    let total = results.len();
 
     let mut resp = serde_json::json!({
         "success": true,
@@ -357,5 +422,96 @@ mod tests {
     fn test_search_params_case_sensitive_default_false() {
         let p: SearchParams = serde_json::from_str(r#"{"query": "x"}"#).unwrap();
         assert!(!p.case_sensitive);
+    }
+
+    // ── parse_search_results shape handling ───────────────────────────────────
+    fn parse(body: serde_json::Value) -> serde_json::Value {
+        let log = Arc::new(Mutex::new(log_store::LogStore::new(200, 60)));
+        let r = parse_search_results(body, "q", true, &log).unwrap();
+        let text = r.content[0].raw.as_text().unwrap().text.clone();
+        serde_json::from_str(&text).unwrap()
+    }
+
+    #[test]
+    fn test_parse_nested_matches_shape() {
+        // Real Atelier v2 shape: matches nested per document.
+        let body = serde_json::json!({"result": {"workId": null, "content": [
+            {"doc": "Foo.cls", "matches": [
+                {"text": "ClassMethod A()", "line": 10, "member": "A"},
+                {"text": "ClassMethod B()", "line": 20, "member": "B"}
+            ]}
+        ]}});
+        let v = parse(body);
+        // Two matches from one document → total counts matches, not docs.
+        assert_eq!(v["total_found"], 2);
+        assert_eq!(v["results"][0]["document"], "Foo.cls");
+        assert_eq!(v["results"][0]["line"], 10);
+        assert_eq!(v["results"][0]["content"], "ClassMethod A()");
+        assert_eq!(v["results"][1]["line"], 20);
+    }
+
+    #[test]
+    fn test_parse_v8_result_is_array_directly() {
+        // IRIS 2024+ (Atelier API v8): `result` IS the document array, no `content` wrapper.
+        let body = serde_json::json!({"result": [
+            {"doc": "Region.FRXX.Foo.cls", "matches": [
+                {"member": "Bar", "line": 122, "text": "set x = DataSource"},
+                {"member": "Bar", "line": 135, "text": "quit DataSource"}
+            ]}
+        ]});
+        let v = parse(body);
+        assert_eq!(v["total_found"], 2);
+        assert_eq!(v["results"][0]["document"], "Region.FRXX.Foo.cls");
+        assert_eq!(v["results"][0]["line"], 122);
+        assert_eq!(v["results"][0]["content"], "set x = DataSource");
+        assert_eq!(v["results"][1]["line"], 135);
+    }
+
+    #[test]
+    fn test_parse_flat_shape() {
+        // Legacy/flat shape: one match per content entry.
+        let body = serde_json::json!({"result": {"workId": null, "content": [
+            {"doc": "Bar.cls", "atLine": 1, "text": "bar", "member": ""}
+        ]}});
+        let v = parse(body);
+        assert_eq!(v["total_found"], 1);
+        assert_eq!(v["results"][0]["document"], "Bar.cls");
+        assert_eq!(v["results"][0]["line"], 1);
+        assert_eq!(v["results"][0]["content"], "bar");
+    }
+
+    // ── resolve_files: Atelier requires a `files` scope or it searches nothing ─
+    #[test]
+    fn test_resolve_files_honours_explicit_documents() {
+        let docs = vec!["Region.**.*.cls".to_string(), "Foo.*.mac".to_string()];
+        assert_eq!(resolve_files(&docs, "ALL"), "Region.**.*.cls,Foo.*.mac");
+    }
+
+    #[test]
+    fn test_resolve_files_defaults_per_category() {
+        assert_eq!(resolve_files(&[], "CLS"), "*.cls");
+        assert_eq!(resolve_files(&[], "MAC"), "*.mac");
+        assert_eq!(resolve_files(&[], "INT"), "*.int");
+        assert_eq!(resolve_files(&[], "INC"), "*.inc");
+    }
+
+    #[test]
+    fn test_resolve_files_all_category_covers_every_type() {
+        assert_eq!(resolve_files(&[], "ALL"), "*.cls,*.mac,*.int,*.inc");
+        // Unknown category is treated as ALL rather than searching nothing.
+        assert_eq!(resolve_files(&[], "WHATEVER"), "*.cls,*.mac,*.int,*.inc");
+    }
+
+    #[test]
+    fn test_resolve_files_category_case_insensitive() {
+        assert_eq!(resolve_files(&[], "cls"), "*.cls");
+    }
+
+    #[test]
+    fn test_parse_empty_content() {
+        let body = serde_json::json!({"result": {"workId": null, "content": []}});
+        let v = parse(body);
+        assert_eq!(v["total_found"], 0);
+        assert_eq!(v["results"].as_array().unwrap().len(), 0);
     }
 }
