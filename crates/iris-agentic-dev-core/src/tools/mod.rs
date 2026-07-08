@@ -3447,7 +3447,7 @@ do ##class(%UnitTest.Manager).RunTest("{pattern}","{flags}","{token}")"#,
     }
 
     #[tool(
-        description = "Read, write, delete, or check an IRIS document. mode='get' fetches source, mode='put' writes (with automatic SCM checkout if needed), mode='delete' removes, mode='head' checks existence. Supports batch ops via 'names' array and elicitation_id/elicitation_answer for SCM dialog resumption. No Python required."
+        description = "Read, write, delete, or check an IRIS document. mode='get' fetches source, mode='put' writes (with automatic SCM checkout if needed), mode='delete' removes, mode='head' checks existence. Surgical edits avoid re-sending the whole file: mode='insert' splices `content` before 1-based `line` (omit `line` to append at EOF), mode='delete_lines' removes the inclusive `start`..`end` range. To prevent editing the wrong lines when line numbers are stale, `expected` (the text you believe currently occupies the target lines) is REQUIRED for delete_lines and for positional insert (when `line` is set); a mismatch returns STALE_CONTENT. Both honour SCM checkout, accept compile=true, and return the re-numbered post-write `content` so you can chain edits without a re-get (important for .cls, which IRIS renumbers on save). Supports batch ops via 'names' array and elicitation_id/elicitation_answer for SCM dialog resumption. No Python required."
     )]
     async fn iris_doc(
         &self,
