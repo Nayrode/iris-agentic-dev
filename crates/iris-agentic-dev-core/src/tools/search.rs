@@ -64,16 +64,20 @@ pub async fn handle_iris_search(
 ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
     let category = p.category.as_deref().unwrap_or("ALL");
     let files = resolve_files(&p.documents, category);
-    let mut query_string = format!(
-        "query={}&regex={}&sys=false&category={}&files={}",
+    // Atelier `/action/search` treats a *missing* `case` param as case-SENSITIVE,
+    // so omitting it (the old behaviour when `case_sensitive=false`) silently made
+    // every default search exact-case — `hiddenset` or even `HiddenSet` would miss
+    // unless the casing matched byte-for-byte. Always send `case` explicitly:
+    // `case=0` = insensitive (the tool default), `case=1` = sensitive.
+    let case_flag = if p.case_sensitive { 1 } else { 0 };
+    let query_string = format!(
+        "query={}&regex={}&sys=false&category={}&files={}&case={}",
         urlencoding::encode(&p.query),
         p.regex,
         category,
         urlencoding::encode(&files),
+        case_flag,
     );
-    if p.case_sensitive {
-        query_string.push_str("&case=1");
-    }
 
     let sync_url = iris.versioned_ns_url(&p.namespace, &format!("/action/search?{}", query_string));
 
@@ -124,16 +128,15 @@ pub async fn handle_iris_search(
         _ => {
             // Timeout or error — fall back to async POST
             let post_url = iris.versioned_ns_url(&p.namespace, "/action/search");
-            let mut post_body = serde_json::json!({
+            let post_body = serde_json::json!({
                 "query": p.query,
                 "regex": p.regex,
                 "sys": false,
                 "category": category,
                 "files": files,
+                // Always explicit — a missing `case` defaults to case-sensitive server-side.
+                "case": case_flag,
             });
-            if p.case_sensitive {
-                post_body["case"] = serde_json::json!(1);
-            }
             let resp = client
                 .post(&post_url)
                 .basic_auth(&iris.username, Some(&iris.password))
