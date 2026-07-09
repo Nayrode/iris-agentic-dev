@@ -120,6 +120,76 @@ pub async fn handle_iris_doc(
     p: IrisDocParams,
     elicitation_store: &crate::elicitation::ElicitationStore,
 ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+    // Elicitation resume — user answered a prior SCM checkout dialog. Handled here,
+    // before mode dispatch, so it works for EVERY write path (put and the surgical
+    // insert/delete_lines modes alike). The elicitation store already holds the fully
+    // computed content to write, so we write it directly rather than re-running the
+    // per-mode mutation — otherwise a surgical edit would re-fetch, re-mutate, and
+    // re-trigger the very same checkout dialog in an infinite loop.
+    if let (Some(eid), Some(answer)) = (&p.elicitation_id, &p.elicitation_answer) {
+        if let Some(pending) = elicitation_store.lookup(eid) {
+            elicitation_store.clear(eid);
+            if answer.to_lowercase() != "yes" {
+                return ok_json(serde_json::json!({
+                    "success": false,
+                    "error_code": "WRITE_ABORTED",
+                    "error": "User declined checkout",
+                }));
+            }
+            // Finalize the checkout the user just approved. The pre-write check only
+            // ran UserAction (which *offers* the dialog); the checkout is not actually
+            // committed until AfterUserAction is called. Because do_write is a separate
+            // HTTP job, the in-memory %SourceControl session from the pre-write check is
+            // already gone — so without this the write hits ERROR #5865 "not checked out
+            // of source control". AfterUserAction persists the checkout server-side.
+            let after_code = crate::tools::scm::after_user_action_code(
+                "%CheckOut",
+                &pending.document,
+                "yes",
+                &iris.username,
+                &iris.password,
+            );
+            if let Ok(out) = iris
+                .execute_via_generator(&after_code, &pending.namespace, client)
+                .await
+            {
+                let out = out.lines().next().unwrap_or("").trim().to_string();
+                // Non-empty output from after_user_action_code is an SCM error string.
+                if !out.is_empty() {
+                    return err_json("SCM_CHECKOUT_FAILED", &out);
+                }
+            }
+
+            let resume_content = pending.content.as_deref().unwrap_or("");
+            let result = do_write(
+                iris,
+                client,
+                &pending.document,
+                resume_content,
+                &pending.namespace,
+                p.compile,
+            )
+            .await?;
+            // Re-attach the authoritative post-write content + line count so a caller
+            // resuming a surgical edit after the SCM dialog still gets fresh line numbers
+            // to chain from — otherwise it would edit against stale numbers (the exact
+            // failure that can silently corrupt a file across a checkout round-trip).
+            return Ok(finalize_edit(
+                iris,
+                client,
+                &pending.document,
+                &pending.namespace,
+                result,
+                serde_json::json!({ "resumed": true }),
+            )
+            .await);
+        }
+        return err_json(
+            "ELICITATION_EXPIRED",
+            "Elicitation session expired or not found",
+        );
+    }
+
     match p.mode {
         DocMode::Get => handle_get(iris, client, p).await,
         DocMode::Put => handle_put(iris, client, p, elicitation_store).await,
@@ -227,32 +297,7 @@ async fn handle_put(
     let name = p.name.as_deref().unwrap_or("");
     let ns = &p.namespace;
 
-    // Elicitation resume — user answered a prior SCM dialog
-    if let (Some(eid), Some(answer)) = (&p.elicitation_id, &p.elicitation_answer) {
-        if let Some(pending) = elicitation_store.lookup(eid) {
-            elicitation_store.clear(eid);
-            if answer.to_lowercase() != "yes" {
-                return ok_json(
-                    serde_json::json!({"success": false, "error_code": "WRITE_ABORTED", "error": "User declined checkout"}),
-                );
-            }
-            // User said yes — proceed with the stored content directly
-            let resume_content = pending.content.as_deref().unwrap_or("");
-            return do_write(
-                iris,
-                client,
-                &pending.document,
-                resume_content,
-                &pending.namespace,
-                p.compile,
-            )
-            .await;
-        }
-        return err_json(
-            "ELICITATION_EXPIRED",
-            "Elicitation session expired or not found",
-        );
-    }
+    // Elicitation resume is handled centrally in handle_iris_doc before dispatch.
 
     // Inject ROUTINE header for .mac/.inc if missing
     let raw_content = p.content.as_deref().unwrap_or("");
@@ -341,6 +386,17 @@ async fn do_write(
     namespace: &str,
     compile_after: bool,
 ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+    // Guard against an empty document name. A blank name PUTs to `/doc/` and IRIS
+    // rejects it with a cryptic `ERROR #16006: Document '' name is invalid` (cat OTH).
+    // This surfaces when a caller's tool-call serialization drops the arguments — turn
+    // it into an actionable error instead of a raw HTTP 400.
+    if name.trim().is_empty() {
+        return err_json(
+            "MISSING_PARAMS",
+            "name (document) is required and was empty — the write was not attempted. \
+             If a previous call lost its arguments, resend with name/content set explicitly.",
+        );
+    }
     // I-3: strip Storage blocks — IRIS 2025.1 UDL parser (#5559) fails on Storage XML.
     // IRIS will auto-generate correct storage on first compile.
     // strip_storage_blocks handles the no-block case cheaply (single pass, no alloc).

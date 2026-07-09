@@ -431,9 +431,11 @@ impl IrisConnection {
             "  } Catch ex {".into(),
             "    Write \"ERROR: \",ex.DisplayString(),!".into(),
             "  }".into(),
-            // Surface non-exception errors (e.g. OPEN failure sets $ZERROR but doesn't throw).
-            "  If ($ZError'=\"\") && ($ZError'=\",\") { Write \"ERROR($ZERROR): \",$ZError,! }"
-                .into(),
+            // Snapshot $ZERROR now, before Close/Use/stream operations below can clobber
+            // it. This captures non-exception errors (e.g. an OPEN failure that sets
+            // $ZERROR without throwing) so we can surface them if the body produced no
+            // output — but WITHOUT writing to tmpfile yet (see the out="" test below).
+            "  Set ze = $ZError".into(),
             "  Close tmpfile".into(),
             "  Use savedIO".into(),
             // Read captured output from temp file and return it.
@@ -444,7 +446,15 @@ impl IrisConnection {
             "    While 'stream.AtEnd { Set out = out _ stream.ReadLine() _ $Char(10) }".into(),
             "  }".into(),
             "  Do ##class(%Library.File).Delete(tmpfile)".into(),
-            "  Quit out".into(),
+            // Only surface a non-exception $ZERROR when the body produced NO output.
+            // A residual like <ENDOFFILE> is often left as a benign side effect of an
+            // SCM provider's internal Read even when the operation fully succeeded;
+            // appending it to a non-empty result corrupted otherwise-valid output.
+            "  If (out=\"\") && (ze'=\"\") && (ze'=\",\") { Set out = \"ERROR($ZERROR): \"_ze_$Char(10) }"
+                .into(),
+            "  Set qout = $Replace($Replace(out,$Char(34),$Char(34)_$Char(34)),$Char(10),$Char(1))"
+                .into(),
+            "  Do %code.WriteLine(\" Quit \"_$Char(34)_qout_$Char(34))".into(),
             "}".into(),
             "".into(),
             "}".into(),

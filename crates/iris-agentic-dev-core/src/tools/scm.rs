@@ -276,6 +276,28 @@ pub async fn handle_iris_source_control(
             let (action_code, msg) = parse_action_msg(out);
 
             if action_code == 0 {
+                // action=0 means UserAction wants no confirmation dialog — but the checkout
+                // is NOT actually committed until AfterUserAction runs. Reporting success
+                // here on UserAction alone was a false positive: the item looked checked out
+                // but a later write failed with ERROR #5865. Finalize with AfterUserAction so
+                // the checkout genuinely persists server-side before we claim success.
+                let after_code =
+                    after_user_action_code("%CheckOut", doc, "yes", &iris.username, &iris.password);
+                match xecute(iris, client, &after_code, ns).await {
+                    Ok(o) => {
+                        let aout = o.lines().next().unwrap_or("").trim().to_string();
+                        if !aout.is_empty() && aout != "SCM_UNAVAILABLE" {
+                            return err_json("SCM_CHECKOUT_FAILED", &aout);
+                        }
+                    }
+                    Err(e) => {
+                        return ok_json(serde_json::json!({
+                            "success": false,
+                            "error_code": "SCM_UNAVAILABLE",
+                            "error": e.to_string(),
+                        }))
+                    }
+                }
                 return ok_json(
                     serde_json::json!({"success": true, "document": doc, "editable": true}),
                 );
@@ -583,7 +605,7 @@ fn user_action_code(action_id: &str, doc: &str, username: &str, password: &str) 
 
 /// Build the ObjectScript snippet that re-runs `UserAction` then immediately calls
 /// `AfterUserAction` in the same job, so %SourceControl state is preserved.
-fn after_user_action_code(
+pub(crate) fn after_user_action_code(
     action_id: &str,
     doc: &str,
     answer: &str,
