@@ -14,10 +14,7 @@ pub enum DocMode {
     Fragment,
     Compiled,
     List,
-    /// Surgical insert: splice a block of lines into an existing document without
-    /// re-sending the whole source.
     Insert,
-    /// Surgical delete: remove a 1-based inclusive line range from a document.
     #[serde(rename = "delete_lines")]
     DeleteLines,
 }
@@ -28,7 +25,11 @@ fn default_mode() -> DocMode {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct IrisDocParams {
-    /// Operation: get=fetch source, put=write, delete=remove, head=check existence. Defaults to "get".
+    /// Operation. Defaults to "get".
+    /// get=fetch source, put=write whole doc, delete=remove, head=check existence,
+    /// fragment=read a line range, compiled=read INT form, list=glob docnames,
+    /// insert=splice `content` before 1-based `line` (omit `line` to append at EOF),
+    /// delete_lines=remove inclusive `start`..`end` (requires `expected`).
     #[serde(default = "default_mode", alias = "action")]
     pub mode: DocMode,
     /// Document name e.g. 'MyApp.Patient.cls'
@@ -51,11 +52,14 @@ pub struct IrisDocParams {
     pub compile: bool,
     // mode=fragment / mode=delete_lines params
     /// Fragment/delete start line, 1-based inclusive (required for mode=fragment and mode=delete_lines)
+    #[serde(default, deserialize_with = "de_opt_i64_lenient")]
     pub start: Option<i64>,
     /// Fragment/delete end line, 1-based inclusive (required for mode=fragment and mode=delete_lines)
+    #[serde(default, deserialize_with = "de_opt_i64_lenient")]
     pub end: Option<i64>,
     /// Insertion point for mode=insert: `content` is spliced *before* this 1-based line.
     /// Use 1 to prepend, or total_lines+1 (or omit) to append at end of file.
+    #[serde(default, deserialize_with = "de_opt_i64_lenient")]
     pub line: Option<i64>,
     /// Stale-edit guard. The text you expect to currently occupy the targeted lines
     /// (for delete_lines: the `start`..`end` block; for insert: the single line currently
@@ -75,7 +79,42 @@ pub struct IrisDocParams {
     /// Document category filter: "CLS", "MAC", "INT", "INC", or "ALL" (default "ALL")
     pub category: Option<String>,
     /// Max results for mode=list (default 200, max 1000)
+    #[serde(default, deserialize_with = "de_opt_i64_lenient")]
     pub max_results: Option<i64>,
+}
+
+/// Deserialize an optional i64 leniently: accept a JSON number, an integer-valued
+/// float, or a string containing an int ("214"). LLMs frequently serialize numeric
+/// tool-call args as strings; without this, serde rejects the whole call at the
+/// JSON-RPC layer (-32602), which drives the calling model into a retry-then-
+/// drop-args loop. null / empty string → None. A non-numeric string stays an error.
+fn de_opt_i64_lenient<'de, D>(de: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum IntOrStr {
+        Int(i64),
+        Float(f64),
+        Str(String),
+        Null,
+    }
+    match Option::<IntOrStr>::deserialize(de)? {
+        None | Some(IntOrStr::Null) => Ok(None),
+        Some(IntOrStr::Int(i)) => Ok(Some(i)),
+        Some(IntOrStr::Float(f)) => Ok(Some(f as i64)),
+        Some(IntOrStr::Str(s)) => {
+            let t = s.trim();
+            if t.is_empty() {
+                return Ok(None);
+            }
+            t.parse::<i64>()
+                .map(Some)
+                .map_err(|_| D::Error::custom(format!("expected an integer, got string {s:?}")))
+        }
+    }
 }
 
 fn default_namespace() -> String {
@@ -90,6 +129,30 @@ fn ok_json(v: serde_json::Value) -> Result<rmcp::model::CallToolResult, rmcp::Er
 }
 fn err_json(code: &str, msg: &str) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
     ok_json(serde_json::json!({"success": false, "error_code": code, "error": msg}))
+}
+
+/// Return the trimmed document name, or a MISSING_PARAMS result if absent/blank.
+/// Single-document read modes (get/head/fragment/compiled) and delete would otherwise
+/// issue a request to `/doc/` with an empty name and surface the cryptic IRIS
+/// `ERROR #16006: Document '' name is invalid` — which reads as a server error and
+/// pushes the calling model into a retry loop. Fail fast and clearly instead.
+fn require_name(p: &IrisDocParams, mode: &str) -> Result<String, rmcp::model::CallToolResult> {
+    match p.name.as_deref().map(str::trim) {
+        Some(n) if !n.is_empty() => Ok(n.to_string()),
+        _ => Err(rmcp::model::CallToolResult::success(vec![
+            rmcp::model::Content::text(
+                serde_json::json!({
+                    "success": false,
+                    "error_code": "MISSING_PARAMS",
+                    "error": format!(
+                        "name (document) is required for mode={mode} and was empty — no request \
+                         was sent. If a previous call lost its arguments, resend with `name` set."
+                    ),
+                })
+                .to_string(),
+            ),
+        ])),
+    }
 }
 /// Map a non-2xx HTTP status to an accurate error code.
 /// IRIS_UNREACHABLE is reserved for transport errors (reqwest send() failures).
@@ -261,8 +324,11 @@ async fn handle_get(
         return ok_json(serde_json::json!({"success": true, "documents": results}));
     }
 
-    let name = p.name.as_deref().unwrap_or("");
-    let url = iris.versioned_ns_url(&p.namespace, &format!("/doc/{}", urlencoding::encode(name)));
+    let name = match require_name(&p, "get") {
+        Ok(n) => n,
+        Err(r) => return Ok(r),
+    };
+    let url = iris.versioned_ns_url(&p.namespace, &format!("/doc/{}", urlencoding::encode(&name)));
     let resp = client
         .get(&url)
         .basic_auth(&iris.username, Some(&iris.password))
@@ -550,8 +616,11 @@ async fn handle_delete(
         );
     }
 
-    let name = p.name.as_deref().unwrap_or("");
-    let url = iris.versioned_ns_url(&p.namespace, &format!("/doc/{}", urlencoding::encode(name)));
+    let name = match require_name(&p, "delete") {
+        Ok(n) => n,
+        Err(r) => return Ok(r),
+    };
+    let url = iris.versioned_ns_url(&p.namespace, &format!("/doc/{}", urlencoding::encode(&name)));
     let resp = client
         .delete(&url)
         .basic_auth(&iris.username, Some(&iris.password))
@@ -586,8 +655,11 @@ async fn handle_head(
     client: &reqwest::Client,
     p: IrisDocParams,
 ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-    let name = p.name.as_deref().unwrap_or("");
-    let url = iris.versioned_ns_url(&p.namespace, &format!("/doc/{}", urlencoding::encode(name)));
+    let name = match require_name(&p, "head") {
+        Ok(n) => n,
+        Err(r) => return Ok(r),
+    };
+    let url = iris.versioned_ns_url(&p.namespace, &format!("/doc/{}", urlencoding::encode(&name)));
     let resp = client
         .head(&url)
         .basic_auth(&iris.username, Some(&iris.password))
@@ -988,7 +1060,10 @@ async fn handle_fragment(
     client: &reqwest::Client,
     p: IrisDocParams,
 ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-    let name = p.name.as_deref().unwrap_or("");
+    let name = match require_name(&p, "fragment") {
+        Ok(n) => n,
+        Err(r) => return Ok(r),
+    };
     let start = match p.start {
         Some(v) => v.max(1),
         None => return err_json("MISSING_PARAMS", "start is required for mode=fragment"),
@@ -1004,7 +1079,7 @@ async fn handle_fragment(
         );
     }
 
-    let url = iris.versioned_ns_url(&p.namespace, &format!("/doc/{}", urlencoding::encode(name)));
+    let url = iris.versioned_ns_url(&p.namespace, &format!("/doc/{}", urlencoding::encode(&name)));
     let resp = client
         .get(&url)
         .basic_auth(&iris.username, Some(&iris.password))
@@ -1079,7 +1154,10 @@ async fn handle_compiled(
     client: &reqwest::Client,
     p: IrisDocParams,
 ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-    let name = p.name.as_deref().unwrap_or("");
+    let name = match require_name(&p, "compiled") {
+        Ok(n) => n,
+        Err(r) => return Ok(r),
+    };
     let lower = name.to_lowercase();
 
     // .INC files have no INT form
@@ -1101,7 +1179,7 @@ async fn handle_compiled(
         }
     }
 
-    let routine = match derive_routine_name(name) {
+    let routine = match derive_routine_name(&name) {
         Some(r) => r,
         None => {
             return err_json(
@@ -2092,6 +2170,36 @@ mod tests {
         let text = result.content[0].raw.as_text().unwrap().text.clone();
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["error"], "");
+    }
+
+    // ── require_name (empty-name guard for read/delete modes) ──────────────────
+    fn require_name_err_text(json: &str, mode: &str) -> Option<String> {
+        let p: IrisDocParams = serde_json::from_str(json).unwrap();
+        match require_name(&p, mode) {
+            Ok(_) => None,
+            Err(r) => Some(r.content[0].raw.as_text().unwrap().text.clone()),
+        }
+    }
+
+    #[test]
+    fn test_require_name_missing_is_error() {
+        let text = require_name_err_text(r#"{"mode":"get"}"#, "get").expect("should err");
+        assert!(text.contains("MISSING_PARAMS"), "{text}");
+    }
+
+    #[test]
+    fn test_require_name_blank_is_error() {
+        let text =
+            require_name_err_text(r#"{"mode":"head","name":"   "}"#, "head").expect("should err");
+        assert!(text.contains("MISSING_PARAMS"), "{text}");
+        assert!(text.contains("head"), "message names the mode: {text}");
+    }
+
+    #[test]
+    fn test_require_name_present_trims_and_returns() {
+        let p: IrisDocParams =
+            serde_json::from_str(r#"{"mode":"get","name":"  Foo.cls  "}"#).unwrap();
+        assert_eq!(require_name(&p, "get").unwrap(), "Foo.cls");
     }
 
     // ── apply_insert ──────────────────────────────────────────────────────────
