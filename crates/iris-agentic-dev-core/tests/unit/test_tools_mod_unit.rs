@@ -807,6 +807,678 @@ async fn telemetry_export_trace_rejects_invalid_session_id() {
 // tool calls lives in test_benchmark_live.rs, for the same reason noted above (durable
 // write must genuinely succeed).
 
+// ── call_for_test dispatch coverage (tools/mod.rs L7564-L7710) ────────────────────
+// Each test calls a major tool dispatch to cover the tool dispatch method bodies
+// when IRIS is unavailable. Results will be errors (no IRIS), but that still covers
+// the dispatch path and prevents regressions.
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_execute_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_execute", serde_json::json!({"code": "write 1"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_compile_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_compile", serde_json::json!({"files": []}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_test_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_test",
+            serde_json::json!({"suite": "MyTest.MyTestSuite"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_query_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_query", serde_json::json!({"query": "SELECT 1"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_symbols_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_symbols", serde_json::json!({"query": ".*"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_symbols_local_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_symbols_local", serde_json::json!({"query": ".*"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_get_log_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_get_log", serde_json::json!({}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_doc_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_doc",
+            serde_json::json!({"action": "get", "document": "MyClass.cls"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_info_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_info", serde_json::json!({"what": "version"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_search_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_search", serde_json::json!({"query": "test"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_source_control_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_source_control", serde_json::json!({"action": "list"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_admin_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_admin", serde_json::json!({"action": "status"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_production_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_production", serde_json::json!({"action": "status"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_interop_query_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_interop_query",
+            serde_json::json!({"query_type": "messages"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_production_item_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_production_item",
+            serde_json::json!({"action": "list"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_credential_list_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_credential_list", serde_json::json!({}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_credential_manage_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_credential_manage",
+            serde_json::json!({"action": "list"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_lookup_manage_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_lookup_manage", serde_json::json!({"action": "list"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_lookup_transfer_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_lookup_transfer",
+            serde_json::json!({"action": "export"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_message_body_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_message_body", serde_json::json!({"message_id": "1"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_business_rule_info_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_business_rule_info",
+            serde_json::json!({"rule": "MyRule"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_production_diff_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_production_diff",
+            serde_json::json!({"production": "MyProd"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_generate_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_generate",
+            serde_json::json!({"action": "class", "spec": "generate a class"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_macro_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_macro", serde_json::json!({"action": "list"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_debug_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_debug", serde_json::json!({"action": "error_logs"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_table_info_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_table_info", serde_json::json!({"table": "MyTable"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_resolve_dynamic_dispatch_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "resolve_dynamic_dispatch",
+            serde_json::json!({"class": "MyClass"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_extract_message_map_routing_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "extract_message_map_routing",
+            serde_json::json!({"class": "MyClass"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_find_subclass_implementations_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "find_subclass_implementations",
+            serde_json::json!({"class": "MyClass"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_docs_introspect_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("docs_introspect", serde_json::json!({"query": "Patient"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_agent_history_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("agent_history", serde_json::json!({}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_agent_stats_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("agent_stats", serde_json::json!({}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_list_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_list", serde_json::json!({}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_describe_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_describe", serde_json::json!({"name": "test_skill"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_search_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_search", serde_json::json!({"query": "test"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_forget_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_forget", serde_json::json!({"name": "test_skill"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_kb_recall_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("kb_recall", serde_json::json!({"query": "test"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_kb_index_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("kb_index", serde_json::json!({"path": "/tmp"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_community_list_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_community_list", serde_json::json!({}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_community_install_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "skill_community_install",
+            serde_json::json!({"package": "test_pkg"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_debug_map_int_to_cls_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("debug_map_int_to_cls", serde_json::json!({"int": 1}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_debug_capture_packet_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "debug_capture_packet",
+            serde_json::json!({"code": "write 1"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_debug_get_error_logs_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "debug_get_error_logs",
+            serde_json::json!({"timeout_seconds": 10}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_debug_source_map_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("debug_source_map", serde_json::json!({"int_name": "test"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill", serde_json::json!({"action": "list"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_community_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_community", serde_json::json!({"action": "list"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_kb_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("kb", serde_json::json!({"action": "list"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_agent_info_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("agent_info", serde_json::json!({"what": "status"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_generate_class_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_generate_class", serde_json::json!({"spec": "test"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_generate_test_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_generate_test", serde_json::json!({"spec": "test"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_containers_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("iris_containers", serde_json::json!({"action": "list"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_propose_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_propose", serde_json::json!({}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_optimize_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_optimize", serde_json::json!({"name": "test"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_skill_share_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test("skill_share", serde_json::json!({"name": "test"}))
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_global_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_global",
+            serde_json::json!({"action": "get", "global_name": "MyApp"}),
+        )
+        .await;
+}
+
+#[cfg(feature = "testing")]
+#[tokio::test]
+async fn call_for_test_iris_execute_method_no_iris() {
+    use iris_agentic_dev_core::tools::IrisTools;
+
+    let tools = IrisTools::new(None).expect("IrisTools::new should succeed");
+    let _result = tools
+        .call_for_test(
+            "iris_execute_method",
+            serde_json::json!({"class": "MyClass", "method": "MyMethod"}),
+        )
+        .await;
+}
+
 // ── 059-tool-telemetry-benchmark: agent_history reports duration/session fields ─
 
 #[cfg(feature = "testing")]

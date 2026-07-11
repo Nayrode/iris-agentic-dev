@@ -81,7 +81,7 @@ pub fn parse_execute_output(output: &str) -> Result<String, serde_json::Value> {
 }
 
 /// Parse `get` output: `1|value` (defined) or `0|` (undefined).
-fn parse_get_output(raw: &str) -> serde_json::Value {
+pub fn parse_get_output(raw: &str) -> serde_json::Value {
     // After trim the output is like "1|hello-052" or "0|"
     if let Some(rest) = raw.strip_prefix("1|") {
         serde_json::json!({"success": true, "defined": true, "value": rest})
@@ -96,7 +96,7 @@ fn parse_get_output(raw: &str) -> serde_json::Value {
 }
 
 /// Parse subtree `get` output: lines of `path|value` followed by `DONE|count|truncated`.
-fn parse_subtree_output(raw: &str) -> serde_json::Value {
+pub fn parse_subtree_output(raw: &str) -> serde_json::Value {
     let mut nodes: Vec<serde_json::Value> = Vec::new();
     let mut count: i64 = 0;
     let mut truncated = false;
@@ -118,7 +118,7 @@ fn parse_subtree_output(raw: &str) -> serde_json::Value {
 }
 
 /// Parse `list` output: subscript values one per line, followed by `DONE|count|truncated`.
-fn parse_list_output(raw: &str) -> serde_json::Value {
+pub fn parse_list_output(raw: &str) -> serde_json::Value {
     let mut subscripts: Vec<serde_json::Value> = Vec::new();
     let mut truncated = false;
     for line in raw.lines() {

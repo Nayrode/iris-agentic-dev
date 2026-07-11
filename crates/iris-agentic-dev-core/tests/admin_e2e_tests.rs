@@ -425,6 +425,12 @@ documented Security.Applications API. Fails with \
 Community-edition containers; only run this test against an Enterprise/ \
 Ensemble-capable IRIS instance."]
 fn test_admin_webapp_crud() {
+    if std::env::var("IRIS_HEALTHSHARE").is_err() {
+        eprintln!(
+            "skip: IRIS_HEALTHSHARE not set — test requires HealthShare/Ensemble-capable IRIS"
+        );
+        return;
+    }
     assert!(iris_available());
     let env = &[("IRIS_ADMIN_TOOLS", "1")];
 

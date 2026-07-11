@@ -366,6 +366,10 @@ mod server_manager_coverage {
         build_server_manager_config_json, select_server, ServerManagerCredentialEntry,
         ServerManagerProfile, SmCredentialError,
     };
+    use std::sync::Mutex;
+
+    // Serialize tests that mutate IRIS_SERVER_NAME env var.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
     use iris_agentic_dev_core::iris::workspace_config::{
         ConnectionPolicy, DataPolicy, McpTemplate, ToolCategory,
     };
@@ -401,6 +405,7 @@ mod server_manager_coverage {
 
     #[test]
     fn select_server_multi_no_env_var_returns_ambiguous() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("IRIS_SERVER_NAME");
         let profiles = vec![profile("dev"), profile("staging"), profile("prod")];
         let r = select_server(&profiles);
@@ -409,6 +414,7 @@ mod server_manager_coverage {
 
     #[test]
     fn select_server_multi_with_env_var_selects_match() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("IRIS_SERVER_NAME", "staging");
         let profiles = vec![profile("dev"), profile("staging"), profile("prod")];
         let r = select_server(&profiles).unwrap();
@@ -418,6 +424,7 @@ mod server_manager_coverage {
 
     #[test]
     fn select_server_multi_with_env_var_no_match_returns_ambiguous() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("IRIS_SERVER_NAME", "nonexistent");
         let profiles = vec![profile("dev"), profile("prod")];
         let r = select_server(&profiles);
@@ -427,6 +434,7 @@ mod server_manager_coverage {
 
     #[test]
     fn select_server_case_insensitive_match() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("IRIS_SERVER_NAME", "STAGING");
         let profiles = vec![profile("dev"), profile("staging")];
         let r = select_server(&profiles).unwrap();

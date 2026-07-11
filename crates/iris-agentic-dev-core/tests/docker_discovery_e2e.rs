@@ -174,6 +174,10 @@ fn start_fresh_container(
 #[test]
 #[ignore = "requires `cargo build` to produce target/debug/iris-dev binary"]
 fn test_container_not_found_message() {
+    if std::env::var("IRIS_DOCKER_E2E").is_err() {
+        eprintln!("skip: IRIS_DOCKER_E2E not set");
+        return;
+    }
     let stderr = run_iris_dev_mcp_capture_stderr("definitely-not-running-container-xyz", &[]);
     println!("stderr: {}", stderr);
     assert!(
@@ -194,6 +198,10 @@ fn test_container_not_found_message() {
 #[test]
 #[ignore = "requires `cargo build` + Docker with IRIS community image"]
 fn test_port_not_mapped_message() {
+    if std::env::var("IRIS_DOCKER_E2E").is_err() {
+        eprintln!("skip: IRIS_DOCKER_E2E not set");
+        return;
+    }
     let _container = start_fresh_container(
         "containers.intersystems.com/intersystems/iris-community:2026.1",
         "e2e-nomapped",
@@ -226,6 +234,10 @@ fn test_port_not_mapped_message() {
 #[test]
 #[ignore = "requires `cargo build` + Docker with IRIS community image"]
 fn test_auth_401_single_warn() {
+    if std::env::var("IRIS_DOCKER_E2E").is_err() {
+        eprintln!("skip: IRIS_DOCKER_E2E not set — test requires Docker + iris-agentic-dev binary");
+        return;
+    }
     // Start community container without IRIS_PASSWORD so _SYSTEM gets OS auth only
     let _ = Command::new("docker")
         .args(["rm", "-f", "e2e-nopassword"])
@@ -273,8 +285,13 @@ fn test_auth_401_single_warn() {
 #[test]
 #[ignore = "requires live enterprise container (IRIS_LICENSE_KEY_PATH env var)"]
 fn test_enterprise_web_server_absent_message() {
-    let key = std::env::var("IRIS_LICENSE_KEY_PATH")
-        .expect("IRIS_LICENSE_KEY_PATH must be set for enterprise tests");
+    let key = match std::env::var("IRIS_LICENSE_KEY_PATH") {
+        Ok(k) => k,
+        Err(_) => {
+            eprintln!("skip: IRIS_LICENSE_KEY_PATH not set — enterprise test requires license key");
+            return;
+        }
+    };
 
     let _container = start_fresh_container(
         "containers.intersystems.com/intersystems/iris:2026.1",
@@ -311,6 +328,10 @@ fn test_enterprise_web_server_absent_message() {
 #[test]
 #[ignore = "requires `cargo build` + Docker with IRIS community image"]
 fn test_all_community_images() {
+    if std::env::var("IRIS_DOCKER_E2E").is_err() {
+        eprintln!("skip: IRIS_DOCKER_E2E not set");
+        return;
+    }
     // iris-community: port not mapped → port-not-mapped message
     let _c1 = start_fresh_container(
         "containers.intersystems.com/intersystems/iris-community:2026.1",
@@ -344,8 +365,13 @@ fn test_all_community_images() {
 #[test]
 #[ignore = "requires live enterprise containers (IRIS_LICENSE_KEY_PATH env var)"]
 fn test_all_enterprise_images() {
-    let key = std::env::var("IRIS_LICENSE_KEY_PATH")
-        .expect("IRIS_LICENSE_KEY_PATH must be set for enterprise tests");
+    let key = match std::env::var("IRIS_LICENSE_KEY_PATH") {
+        Ok(k) => k,
+        Err(_) => {
+            eprintln!("skip: IRIS_LICENSE_KEY_PATH not set — enterprise test requires license key");
+            return;
+        }
+    };
 
     // iris enterprise: web server absent → Atelier not responding
     let _c1 = start_fresh_container(

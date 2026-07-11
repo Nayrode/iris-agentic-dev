@@ -430,6 +430,46 @@ iris-agentic-dev benchmark --skill <path> --baseline   # Run the skill benchmark
 iris-agentic-dev --version               # Print version
 ```
 
+### CLI tool shortcuts
+
+Run any IRIS operation directly from the terminal — no MCP client or AI session needed.
+
+| Subcommand | Example | What it does |
+|-----------|---------|--------------|
+| `exec` | `iris-agentic-dev exec 'write $ZVersion,!'` | Execute ObjectScript inline, from `--file`, or from stdin (`-`) |
+| `compile` | `iris-agentic-dev compile MyApp.Foo.cls` | Compile one or more `.cls`/`.mac` files; prints `OK:` or `ERROR:` per file |
+| `query` | `iris-agentic-dev query 'SELECT Name FROM %Dictionary.ClassDefinition'` | Execute SQL; prints TSV (header + rows) to stdout for piping to grep/awk |
+| `doc` | `iris-agentic-dev doc get MyApp.Foo` | Read IRIS document UDL; `doc put MyApp.Foo --file f.cls` to write |
+| `tool` | `iris-agentic-dev tool iris_info --args '{"what":"version"}'` | Call any MCP tool by name without an MCP client |
+
+All shortcuts accept the same connection flags: `--host`, `--web-port`, `--namespace`, `--username`, `--password`, `--container`. Env vars (`IRIS_HOST`, `IRIS_WEB_PORT`, etc.) are also honored. Write operations are gated by `IRIS_ALLOW_PROD=1` when connecting to live instances.
+
+```bash
+# Run ObjectScript — print IRIS version
+iris-agentic-dev exec 'write $ZVersion,!'
+
+# Execute a file
+iris-agentic-dev exec --file myscript.cos
+
+# Pipe script via stdin
+echo 'write $namespace,!' | iris-agentic-dev exec -
+
+# Compile a class
+iris-agentic-dev compile MyApp.MyClass.cls --host myserver --namespace PROD
+
+# Query with namespace override
+iris-agentic-dev query --namespace %SYS 'SELECT Name FROM Security.Users'
+
+# Get a class definition
+iris-agentic-dev doc get %Dictionary.ClassDefinition --namespace %SYS
+
+# Upload a class
+iris-agentic-dev doc put MyApp.Foo --file MyApp.Foo.cls
+
+# Call any tool
+iris-agentic-dev tool check_config --args '{}'
+```
+
 ---
 
 ## Contributing

@@ -15,6 +15,10 @@ use iris_agentic_dev_core::iris::server_manager::{
 #[test]
 #[ignore = "requires real VS Code Server Manager + IRIS_SERVER_NAME env var"]
 fn e2e_sm_discovery_finds_connection() {
+    if std::env::var("IRIS_SM_E2E").is_err() {
+        eprintln!("skip: IRIS_SM_E2E not set");
+        return;
+    }
     let settings_path = sm_settings_path().expect("VS Code settings.json must exist");
     let profiles = parse_sm_settings(&settings_path);
     assert!(
@@ -26,6 +30,10 @@ fn e2e_sm_discovery_finds_connection() {
 #[test]
 #[ignore = "requires real VS Code Server Manager + IRIS_SERVER_NAME env var"]
 fn e2e_sm_credential_resolves() {
+    if std::env::var("IRIS_SM_E2E").is_err() {
+        eprintln!("skip: IRIS_SM_E2E not set");
+        return;
+    }
     use iris_agentic_dev_core::iris::server_manager::resolve_credential;
     let settings_path = sm_settings_path().expect("VS Code settings.json must exist");
     let profiles = parse_sm_settings(&settings_path);
@@ -40,6 +48,10 @@ fn e2e_sm_credential_resolves() {
 #[test]
 #[ignore = "requires real VS Code Server Manager, IRIS_SERVER_NAME env var, and live IRIS"]
 fn e2e_sm_tools_work_after_discovery() {
+    if std::env::var("IRIS_SM_E2E").is_err() {
+        eprintln!("skip: IRIS_SM_E2E not set");
+        return;
+    }
     // Full round-trip: SM discovery → credential resolution → tool call
     // This is the zero-config scenario from US1 AC-1.
     // Timing: must complete zero-config setup in < 30 seconds (SC-001)

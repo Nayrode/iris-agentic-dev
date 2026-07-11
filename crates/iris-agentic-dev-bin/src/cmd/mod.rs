@@ -1,6 +1,12 @@
 pub mod benchmark;
 pub mod compile;
+pub mod connection_args;
+pub mod doc;
+pub mod exec;
 pub mod init;
 pub mod install;
 pub mod mcp;
 pub mod plugin;
+pub mod query;
+pub mod tool;
+pub mod tsv;
