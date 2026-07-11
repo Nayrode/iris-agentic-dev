@@ -1,9 +1,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use iris_agentic_dev::cmd;
 use std::ffi::OsString;
 use tracing_subscriber::EnvFilter;
-
-mod cmd;
 
 #[derive(Parser)]
 #[command(
@@ -31,6 +30,14 @@ enum Commands {
     Mcp(cmd::mcp::McpCommand),
     /// Compile ObjectScript .cls files on IRIS
     Compile(cmd::compile::CompileCommand),
+    /// Execute ObjectScript code on IRIS
+    Exec(cmd::exec::ExecCommand),
+    /// Run a SQL query on IRIS and print TSV results
+    Query(cmd::query::QueryCommand),
+    /// Read or write IRIS class documents (doc get / doc put)
+    Doc(cmd::doc::DocCommand),
+    /// Invoke any MCP tool by name with JSON arguments
+    Tool(cmd::tool::ToolCommand),
     /// Initialize a .iris-dev.toml workspace config
     Init(cmd::init::InitCommand),
     /// Install packages from iris-dev.toml
@@ -67,6 +74,10 @@ async fn main() -> Result<()> {
     match cli.command {
         Some(Commands::Mcp(cmd)) => cmd.run().await,
         Some(Commands::Compile(cmd)) => cmd.run().await,
+        Some(Commands::Exec(cmd)) => cmd.run().await,
+        Some(Commands::Query(cmd)) => cmd.run().await,
+        Some(Commands::Doc(cmd)) => cmd.run().await,
+        Some(Commands::Tool(cmd)) => cmd.run().await,
         Some(Commands::Init(cmd)) => cmd.run().await,
         Some(Commands::Install(cmd)) => cmd.run().await,
         Some(Commands::Benchmark(cmd)) => cmd.run().await,

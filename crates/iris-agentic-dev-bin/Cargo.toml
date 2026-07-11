@@ -9,8 +9,12 @@ license.workspace = true
 name = "iris-agentic-dev"
 path = "src/main.rs"
 
+[lib]
+name = "iris_agentic_dev"
+path = "src/lib.rs"
+
 [dependencies]
-iris-agentic-dev-core = { path = "../iris-agentic-dev-core" }
+iris-agentic-dev-core = { path = "../iris-agentic-dev-core", features = ["testing"] }
 rmcp = { workspace = true }
 reqwest = { workspace = true }
 clap.workspace = true
@@ -32,3 +36,51 @@ path = "tests/plugin_dispatch_tests.rs"
 [[test]]
 name = "benchmark_relocated_binary_tests"
 path = "tests/benchmark_relocated_binary_tests.rs"
+
+[[test]]
+name = "test_connection_args"
+path = "tests/unit/test_connection_args.rs"
+
+[[test]]
+name = "test_tsv"
+path = "tests/unit/test_tsv.rs"
+
+[[test]]
+name = "test_exec_args"
+path = "tests/unit/test_exec_args.rs"
+
+[[test]]
+name = "test_compile_args"
+path = "tests/unit/test_compile_args.rs"
+
+[[test]]
+name = "test_query_tsv"
+path = "tests/unit/test_query_tsv.rs"
+
+[[test]]
+name = "test_doc_args"
+path = "tests/unit/test_doc_args.rs"
+
+[[test]]
+name = "test_tool_dispatch"
+path = "tests/unit/test_tool_dispatch.rs"
+
+[[test]]
+name = "test_exec_live"
+path = "tests/integration/test_exec_live.rs"
+
+[[test]]
+name = "test_compile_live"
+path = "tests/integration/test_compile_live.rs"
+
+[[test]]
+name = "test_query_live"
+path = "tests/integration/test_query_live.rs"
+
+[[test]]
+name = "test_doc_live"
+path = "tests/integration/test_doc_live.rs"
+
+[[test]]
+name = "test_tool_live"
+path = "tests/integration/test_tool_live.rs"

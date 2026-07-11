@@ -832,3 +832,192 @@ fn parse_execute_output_error_with_special_chars() {
         .unwrap()
         .contains("TAG"));
 }
+
+// ---------------------------------------------------------------------------
+// parse_get_output tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_get_output_returns_defined_with_value() {
+    use iris_agentic_dev_core::tools::global;
+    let result = global::parse_get_output("1|hello");
+    assert_eq!(result["success"], true);
+    assert_eq!(result["defined"], true);
+    assert_eq!(result["value"], "hello");
+}
+
+#[test]
+fn parse_get_output_returns_undefined() {
+    use iris_agentic_dev_core::tools::global;
+    let result = global::parse_get_output("0|");
+    assert_eq!(result["success"], true);
+    assert_eq!(result["defined"], false);
+    assert_eq!(result["value"], serde_json::Value::Null);
+}
+
+#[test]
+fn parse_get_output_empty_defined_value() {
+    use iris_agentic_dev_core::tools::global;
+    let result = global::parse_get_output("1|");
+    assert_eq!(result["success"], true);
+    assert_eq!(result["defined"], true);
+    assert_eq!(result["value"], "");
+}
+
+#[test]
+fn parse_get_output_value_with_pipes() {
+    use iris_agentic_dev_core::tools::global;
+    let result = global::parse_get_output("1|a|b|c");
+    assert_eq!(result["success"], true);
+    assert_eq!(result["defined"], true);
+    assert_eq!(result["value"], "a|b|c");
+}
+
+#[test]
+fn parse_get_output_unexpected_format() {
+    use iris_agentic_dev_core::tools::global;
+    let result = global::parse_get_output("bad");
+    assert_eq!(result["success"], false);
+    assert_eq!(result["error_code"], "IRIS_EXECUTE_ERROR");
+    assert!(result["message"].as_str().unwrap().contains("unexpected"));
+}
+
+// ---------------------------------------------------------------------------
+// parse_subtree_output tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_subtree_output_single_node() {
+    use iris_agentic_dev_core::tools::global;
+    let input = r#"^MyApp("a")|hello
+DONE|1|0
+"#;
+    let result = global::parse_subtree_output(input);
+    assert_eq!(result["success"], true);
+    assert_eq!(result["nodes"].as_array().unwrap().len(), 1);
+    assert_eq!(result["nodes"][0]["path"], r#"^MyApp("a")"#);
+    assert_eq!(result["nodes"][0]["value"], "hello");
+    assert_eq!(result["node_count"], 1);
+    assert_eq!(result["truncated"], false);
+}
+
+#[test]
+fn parse_subtree_output_truncated() {
+    use iris_agentic_dev_core::tools::global;
+    let input = r#"^Global("x")|value1
+^Global("y")|value2
+DONE|100|1
+"#;
+    let result = global::parse_subtree_output(input);
+    assert_eq!(result["success"], true);
+    assert_eq!(result["node_count"], 100);
+    assert_eq!(result["truncated"], true);
+}
+
+#[test]
+fn parse_subtree_output_empty() {
+    use iris_agentic_dev_core::tools::global;
+    let input = "DONE|0|0\n";
+    let result = global::parse_subtree_output(input);
+    assert_eq!(result["success"], true);
+    assert_eq!(result["nodes"].as_array().unwrap().len(), 0);
+    assert_eq!(result["node_count"], 0);
+    assert_eq!(result["truncated"], false);
+}
+
+#[test]
+fn parse_subtree_output_multiple_nodes() {
+    use iris_agentic_dev_core::tools::global;
+    let input = r#"^App("a")|val1
+^App("b")|val2
+^App("c")|val3
+DONE|3|0
+"#;
+    let result = global::parse_subtree_output(input);
+    assert_eq!(result["success"], true);
+    let nodes = result["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 3);
+    assert_eq!(nodes[0]["value"], "val1");
+    assert_eq!(nodes[1]["value"], "val2");
+    assert_eq!(nodes[2]["value"], "val3");
+}
+
+#[test]
+fn parse_subtree_output_skips_empty_lines() {
+    use iris_agentic_dev_core::tools::global;
+    let input = r#"^App("a")|val1
+
+^App("b")|val2
+
+DONE|2|0
+"#;
+    let result = global::parse_subtree_output(input);
+    assert_eq!(result["success"], true);
+    let nodes = result["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 2);
+    assert_eq!(result["node_count"], 2);
+}
+
+// ---------------------------------------------------------------------------
+// parse_list_output tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_list_output_single_subscript() {
+    use iris_agentic_dev_core::tools::global;
+    let input = "foo\nDONE|1|0\n";
+    let result = global::parse_list_output(input);
+    assert_eq!(result["success"], true);
+    let subs = result["subscripts"].as_array().unwrap();
+    assert_eq!(subs.len(), 1);
+    assert_eq!(subs[0], "foo");
+    assert_eq!(result["truncated"], false);
+}
+
+#[test]
+fn parse_list_output_multiple_subscripts() {
+    use iris_agentic_dev_core::tools::global;
+    let input = "a\nb\nc\nDONE|3|0\n";
+    let result = global::parse_list_output(input);
+    assert_eq!(result["success"], true);
+    let subs = result["subscripts"].as_array().unwrap();
+    assert_eq!(subs.len(), 3);
+    assert_eq!(subs[0], "a");
+    assert_eq!(subs[1], "b");
+    assert_eq!(subs[2], "c");
+}
+
+#[test]
+fn parse_list_output_truncated() {
+    use iris_agentic_dev_core::tools::global;
+    let input = "sub1\nsub2\nDONE|50|1\n";
+    let result = global::parse_list_output(input);
+    assert_eq!(result["success"], true);
+    assert_eq!(result["truncated"], true);
+    let subs = result["subscripts"].as_array().unwrap();
+    assert_eq!(subs.len(), 2);
+}
+
+#[test]
+fn parse_list_output_empty() {
+    use iris_agentic_dev_core::tools::global;
+    let input = "DONE|0|0\n";
+    let result = global::parse_list_output(input);
+    assert_eq!(result["success"], true);
+    let subs = result["subscripts"].as_array().unwrap();
+    assert_eq!(subs.len(), 0);
+    assert_eq!(result["truncated"], false);
+}
+
+#[test]
+fn parse_list_output_skips_blank_lines() {
+    use iris_agentic_dev_core::tools::global;
+    let input = "sub1\n\nsub2\n\nsub3\nDONE|3|0\n";
+    let result = global::parse_list_output(input);
+    assert_eq!(result["success"], true);
+    let subs = result["subscripts"].as_array().unwrap();
+    assert_eq!(subs.len(), 3);
+    assert_eq!(subs[0], "sub1");
+    assert_eq!(subs[1], "sub2");
+    assert_eq!(subs[2], "sub3");
+}

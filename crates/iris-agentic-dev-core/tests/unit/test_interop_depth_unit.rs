@@ -1025,3 +1025,500 @@ fn parse_production_items_enabled_other_value_treated_as_false() {
     let items = parse_production_items_from_source(source);
     assert!(!items[0].2);
 }
+
+// ---------------------------------------------------------------------------
+// IRIS_UNREACHABLE tests for interop_*_impl functions with None iris connection
+// These test error paths without requiring a live IRIS connection.
+// ---------------------------------------------------------------------------
+
+use iris_agentic_dev_core::tools::interop::{
+    interop_autostart_get_impl, interop_autostart_set_impl, interop_credential_list_impl,
+    interop_credential_manage_impl, interop_logs_impl, interop_lookup_manage_impl,
+    interop_lookup_transfer_impl, interop_message_search_impl, interop_production_item_impl,
+    interop_production_needs_update_impl, interop_production_recover_impl,
+    interop_production_start_impl, interop_production_status_impl, interop_production_stop_impl,
+    interop_production_update_impl, interop_queues_impl, CredentialListParams,
+    CredentialManageParams, LogsParams, LookupManageParams, LookupTransferParams,
+    MessageSearchParams, ProductionAutostartParams, ProductionItemParams, ProductionNameParams,
+    ProductionNeedsUpdateParams, ProductionRecoverParams, ProductionStatusParams,
+    ProductionStopParams, ProductionUpdateParams,
+};
+
+#[tokio::test]
+async fn interop_production_status_none_iris_returns_unreachable() {
+    let params = ProductionStatusParams {
+        namespace: "USER".to_string(),
+        full_status: false,
+    };
+    let result = interop_production_status_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+    assert_eq!(v["success"], false);
+}
+
+#[tokio::test]
+async fn interop_production_status_none_iris_has_error_message() {
+    let params = ProductionStatusParams {
+        namespace: "USER".to_string(),
+        full_status: false,
+    };
+    let result = interop_production_status_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error"], "No IRIS connection");
+}
+
+#[tokio::test]
+async fn interop_production_start_none_iris_returns_unreachable() {
+    let params = ProductionNameParams {
+        production: Some("TestProduction".to_string()),
+        namespace: "USER".to_string(),
+    };
+    let result = interop_production_start_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_start_none_iris_with_empty_production() {
+    let params = ProductionNameParams {
+        production: None,
+        namespace: "USER".to_string(),
+    };
+    let result = interop_production_start_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_start_none_iris_custom_namespace() {
+    let params = ProductionNameParams {
+        production: Some("TestProd".to_string()),
+        namespace: "CUSTOM".to_string(),
+    };
+    let result = interop_production_start_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_stop_none_iris_returns_unreachable() {
+    let params = ProductionStopParams {
+        production: Some("TestProduction".to_string()),
+        namespace: "USER".to_string(),
+        timeout: 30,
+        force: false,
+    };
+    let result = interop_production_stop_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_stop_none_iris_with_force() {
+    let params = ProductionStopParams {
+        production: Some("TestProduction".to_string()),
+        namespace: "USER".to_string(),
+        timeout: 10,
+        force: true,
+    };
+    let result = interop_production_stop_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_stop_none_iris_with_custom_timeout() {
+    let params = ProductionStopParams {
+        production: Some("TestProduction".to_string()),
+        namespace: "USER".to_string(),
+        timeout: 60,
+        force: false,
+    };
+    let result = interop_production_stop_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_update_none_iris_returns_unreachable() {
+    let params = ProductionUpdateParams {
+        namespace: "USER".to_string(),
+        timeout: 30,
+        force: false,
+    };
+    let result = interop_production_update_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_update_none_iris_with_force() {
+    let params = ProductionUpdateParams {
+        namespace: "USER".to_string(),
+        timeout: 15,
+        force: true,
+    };
+    let result = interop_production_update_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_needs_update_none_iris_returns_unreachable() {
+    let params = ProductionNeedsUpdateParams {
+        namespace: "USER".to_string(),
+    };
+    let result = interop_production_needs_update_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_needs_update_none_iris_custom_namespace() {
+    let params = ProductionNeedsUpdateParams {
+        namespace: "MYNS".to_string(),
+    };
+    let result = interop_production_needs_update_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_recover_none_iris_returns_unreachable() {
+    let params = ProductionRecoverParams {
+        namespace: "USER".to_string(),
+    };
+    let result = interop_production_recover_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_recover_none_iris_custom_namespace() {
+    let params = ProductionRecoverParams {
+        namespace: "RECOVERY".to_string(),
+    };
+    let result = interop_production_recover_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_logs_none_iris_returns_unreachable() {
+    let params = LogsParams {
+        item_name: None,
+        limit: 10,
+        log_type: "error,warning".to_string(),
+    };
+    let result = interop_logs_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_logs_none_iris_with_item_name() {
+    let params = LogsParams {
+        item_name: Some("MyAdapter".to_string()),
+        limit: 20,
+        log_type: "error".to_string(),
+    };
+    let result = interop_logs_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_logs_none_iris_with_custom_limit() {
+    let params = LogsParams {
+        item_name: None,
+        limit: 100,
+        log_type: "info,warning,error,alert".to_string(),
+    };
+    let result = interop_logs_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_queues_none_iris_returns_unreachable() {
+    let result = interop_queues_impl(None).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_message_search_none_iris_returns_unreachable() {
+    let params = MessageSearchParams {
+        source: None,
+        target: None,
+        class_name: None,
+        limit: 20,
+    };
+    let result = interop_message_search_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_message_search_none_iris_with_source() {
+    let params = MessageSearchParams {
+        source: Some("MySource".to_string()),
+        target: None,
+        class_name: None,
+        limit: 30,
+    };
+    let result = interop_message_search_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_message_search_none_iris_with_all_filters() {
+    let params = MessageSearchParams {
+        source: Some("Source".to_string()),
+        target: Some("Target".to_string()),
+        class_name: Some("ClassName".to_string()),
+        limit: 50,
+    };
+    let result = interop_message_search_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_item_none_iris_returns_unreachable() {
+    let params = ProductionItemParams {
+        action: "enable".to_string(),
+        item: "MyItem".to_string(),
+        namespace: "USER".to_string(),
+        settings: std::collections::HashMap::new(),
+    };
+    let result = interop_production_item_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_production_item_none_iris_custom_namespace() {
+    let params = ProductionItemParams {
+        action: "disable".to_string(),
+        item: "Router.Service".to_string(),
+        namespace: "CUSTOM".to_string(),
+        settings: std::collections::HashMap::new(),
+    };
+    let result = interop_production_item_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_credential_list_none_iris_returns_unreachable() {
+    let params = CredentialListParams {
+        namespace: "USER".to_string(),
+    };
+    let result = interop_credential_list_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_credential_list_none_iris_custom_namespace() {
+    let params = CredentialListParams {
+        namespace: "CRED".to_string(),
+    };
+    let result = interop_credential_list_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_credential_manage_none_iris_returns_unreachable() {
+    let params = CredentialManageParams {
+        action: "list".to_string(),
+        id: "MyCred".to_string(),
+        username: None,
+        password: None,
+        namespace: "USER".to_string(),
+    };
+    let result = interop_credential_manage_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_credential_manage_none_iris_set_action() {
+    let params = CredentialManageParams {
+        action: "set".to_string(),
+        id: "MyCred".to_string(),
+        username: Some("admin".to_string()),
+        password: Some("pass123".to_string()),
+        namespace: "USER".to_string(),
+    };
+    let result = interop_credential_manage_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_lookup_manage_none_iris_returns_unreachable() {
+    let params = LookupManageParams {
+        action: "list".to_string(),
+        table: None,
+        key: None,
+        value: None,
+        namespace: "USER".to_string(),
+    };
+    let result = interop_lookup_manage_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_lookup_manage_none_iris_set_action() {
+    let params = LookupManageParams {
+        action: "set".to_string(),
+        table: Some("MyLookup".to_string()),
+        key: Some("key1".to_string()),
+        value: Some("value1".to_string()),
+        namespace: "USER".to_string(),
+    };
+    let result = interop_lookup_manage_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_lookup_manage_none_iris_delete_action() {
+    let params = LookupManageParams {
+        action: "delete".to_string(),
+        table: Some("LookupTable".to_string()),
+        key: Some("keyToDelete".to_string()),
+        value: None,
+        namespace: "USER".to_string(),
+    };
+    let result = interop_lookup_manage_impl(None, params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_lookup_transfer_none_iris_returns_unreachable() {
+    let params = LookupTransferParams {
+        action: "transfer".to_string(),
+        table: "SourceTable".to_string(),
+        xml: None,
+        namespace: "USER".to_string(),
+    };
+    let result = interop_lookup_transfer_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_lookup_transfer_none_iris_custom_namespace() {
+    let params = LookupTransferParams {
+        action: "transfer".to_string(),
+        table: "Lookup.Source".to_string(),
+        xml: None,
+        namespace: "TRANSFER".to_string(),
+    };
+    let result = interop_lookup_transfer_impl(None, params)
+        .await
+        .expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_autostart_get_none_iris_returns_unreachable() {
+    let params = ProductionAutostartParams {
+        action: "get".to_string(),
+        namespace: "USER".to_string(),
+        enabled: None,
+        production: Some("TestProd".to_string()),
+    };
+    let result = interop_autostart_get_impl(None, &params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_autostart_get_none_iris_custom_namespace() {
+    let params = ProductionAutostartParams {
+        action: "get".to_string(),
+        namespace: "CUSTOM".to_string(),
+        enabled: None,
+        production: Some("MyProduction.Production".to_string()),
+    };
+    let result = interop_autostart_get_impl(None, &params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_autostart_set_none_iris_returns_unreachable() {
+    let params = ProductionAutostartParams {
+        action: "set".to_string(),
+        namespace: "USER".to_string(),
+        enabled: Some(true),
+        production: Some("TestProd".to_string()),
+    };
+    let result = interop_autostart_set_impl(None, &params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}
+
+#[tokio::test]
+async fn interop_autostart_set_none_iris_custom_namespace() {
+    let params = ProductionAutostartParams {
+        action: "set".to_string(),
+        namespace: "AUTOSTART".to_string(),
+        enabled: Some(false),
+        production: Some("Auto.StartProd".to_string()),
+    };
+    let result = interop_autostart_set_impl(None, &params).await.expect("Ok");
+    let v = parse_result(result);
+    assert_eq!(v["error_code"], "IRIS_UNREACHABLE");
+}

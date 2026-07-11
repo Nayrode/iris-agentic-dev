@@ -304,3 +304,49 @@ fn test_sc003_fifty_select_queries() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Additional coverage tests for validate_read_only_sql escaping logic
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_read_only_sql_single_quoted_with_backslash_escape() {
+    // Single-quoted string with backslash-escaped quote: 'it\'s'
+    assert_eq!(
+        validate_read_only_sql("SELECT * FROM t WHERE note = 'it\\'s fine'"),
+        Ok(())
+    );
+}
+
+#[test]
+fn validate_read_only_sql_single_quoted_with_multiple_escapes() {
+    // Multiple backslash escapes in a single-quoted string
+    assert_eq!(
+        validate_read_only_sql("SELECT name, msg FROM t WHERE msg = 'it\\'s a \\\\ backslash'"),
+        Ok(())
+    );
+}
+
+#[test]
+fn validate_read_only_sql_double_quoted_identifier_at_start() {
+    // Double-quoted identifier before SELECT keyword
+    assert_eq!(validate_read_only_sql("\"CREATE\" SELECT * FROM t"), Ok(()));
+}
+
+#[test]
+fn validate_read_only_sql_double_quoted_identifiers_multiple() {
+    // Multiple double-quoted identifiers before SELECT
+    assert_eq!(
+        validate_read_only_sql("\"INSERT\" \"DELETE\" SELECT id FROM t"),
+        Ok(())
+    );
+}
+
+#[test]
+fn validate_read_only_sql_mixed_quotes_before_select() {
+    // Mix of single-quoted and double-quoted before SELECT keyword
+    assert_eq!(
+        validate_read_only_sql("'INSERT_LITERAL' \"CREATE\" SELECT COUNT(*) FROM t"),
+        Ok(())
+    );
+}

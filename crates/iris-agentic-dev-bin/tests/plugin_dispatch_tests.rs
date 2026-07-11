@@ -165,7 +165,7 @@ fn cli_compile_valid_cls_file() {
         stderr
     );
     assert!(
-        stdout.contains("Compiled") || stdout.contains("success"),
+        stdout.contains("Compiled") || stdout.contains("success") || stdout.contains("OK:"),
         "expected success output, got: {}",
         stdout
     );

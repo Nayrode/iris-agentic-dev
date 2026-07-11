@@ -4,6 +4,10 @@
 use iris_agentic_dev_core::iris::discovery::{
     emit_unhealthy_message, score_container_name, DiscoveryResult, FailureMode, IrisDiscovery,
 };
+use std::sync::Mutex;
+
+// Mutex to serialize tests that mutate env vars (avoid race conditions in parallel test runs)
+static DISCOVERY_LOCK: Mutex<()> = Mutex::new(());
 
 // ── IrisDiscovery enum smoke test ─────────────────────────────────────────────
 
@@ -914,4 +918,220 @@ fn test_score_container_name_workspace_equals_iris_literal() {
 fn test_score_container_name_mixed_hyphen_and_underscore_in_same_name() {
     let score = score_container_name("my-app_test", "my_app");
     assert_eq!(score, 85, "starts_with(80) + test suffix(5) = 85");
+}
+
+// ── Async tests for discover_iris env var branches (L152-168) ──────────────────
+
+/// Test discover_iris with IRIS_SCHEME=https (custom scheme branch, L159-163)
+/// The function builds a custom base_url directly when scheme != "http".
+/// With an unreachable host (127.0.0.2:1), probe fails silently but returns Found.
+#[tokio::test]
+#[ignore] // May take 2-5 seconds due to probe timeout
+async fn test_discover_iris_with_https_scheme() {
+    let _guard = DISCOVERY_LOCK.lock().unwrap();
+
+    // Save original env vars
+    let saved_host = std::env::var("IRIS_HOST").ok();
+    let saved_scheme = std::env::var("IRIS_SCHEME").ok();
+    let saved_port = std::env::var("IRIS_WEB_PORT").ok();
+
+    // Set env vars: unreachable host + https scheme
+    std::env::set_var("IRIS_HOST", "127.0.0.2");
+    std::env::set_var("IRIS_SCHEME", "https");
+    std::env::set_var("IRIS_WEB_PORT", "1"); // Port 1 fails fast on most systems
+
+    let result = iris_agentic_dev_core::iris::discovery::discover_iris(None).await;
+
+    // Restore env vars
+    match saved_host {
+        Some(v) => std::env::set_var("IRIS_HOST", v),
+        None => std::env::remove_var("IRIS_HOST"),
+    }
+    match saved_scheme {
+        Some(v) => std::env::set_var("IRIS_SCHEME", v),
+        None => std::env::remove_var("IRIS_SCHEME"),
+    }
+    match saved_port {
+        Some(v) => std::env::set_var("IRIS_WEB_PORT", v),
+        None => std::env::remove_var("IRIS_WEB_PORT"),
+    }
+
+    // With IRIS_SCHEME set, the function returns Found (L171-185) regardless of probe success
+    assert!(
+        matches!(result, IrisDiscovery::Found(_)),
+        "discover_iris with IRIS_SCHEME should return Found"
+    );
+}
+
+/// Test discover_iris with IRIS_WEB_PREFIX set (custom prefix branch, L164-167)
+/// Similar to https test but uses prefix with http scheme.
+#[tokio::test]
+#[ignore] // May take 2-5 seconds due to probe timeout
+async fn test_discover_iris_with_web_prefix() {
+    let _guard = DISCOVERY_LOCK.lock().unwrap();
+
+    let saved_host = std::env::var("IRIS_HOST").ok();
+    let saved_prefix = std::env::var("IRIS_WEB_PREFIX").ok();
+    let saved_port = std::env::var("IRIS_WEB_PORT").ok();
+    let saved_scheme = std::env::var("IRIS_SCHEME").ok();
+
+    // Use http but with a web prefix
+    std::env::set_var("IRIS_HOST", "127.0.0.2");
+    std::env::set_var("IRIS_WEB_PREFIX", "myapp");
+    std::env::set_var("IRIS_WEB_PORT", "1");
+    // Remove IRIS_SCHEME to default to http
+    std::env::remove_var("IRIS_SCHEME");
+
+    let result = iris_agentic_dev_core::iris::discovery::discover_iris(None).await;
+
+    match saved_host {
+        Some(v) => std::env::set_var("IRIS_HOST", v),
+        None => std::env::remove_var("IRIS_HOST"),
+    }
+    match saved_prefix {
+        Some(v) => std::env::set_var("IRIS_WEB_PREFIX", v),
+        None => std::env::remove_var("IRIS_WEB_PREFIX"),
+    }
+    match saved_port {
+        Some(v) => std::env::set_var("IRIS_WEB_PORT", v),
+        None => std::env::remove_var("IRIS_WEB_PORT"),
+    }
+    match saved_scheme {
+        Some(v) => std::env::set_var("IRIS_SCHEME", v),
+        None => std::env::remove_var("IRIS_SCHEME"),
+    }
+
+    // With IRIS_WEB_PREFIX set, the function returns Found (L171-185)
+    assert!(
+        matches!(result, IrisDiscovery::Found(_)),
+        "discover_iris with IRIS_WEB_PREFIX should return Found"
+    );
+}
+
+/// Test discover_iris with both IRIS_SCHEME and IRIS_WEB_PREFIX set
+/// This exercises the full custom URL building path (L172-175).
+#[tokio::test]
+#[ignore] // May take 2-5 seconds due to probe timeout
+async fn test_discover_iris_with_scheme_and_prefix() {
+    let _guard = DISCOVERY_LOCK.lock().unwrap();
+
+    let saved_host = std::env::var("IRIS_HOST").ok();
+    let saved_scheme = std::env::var("IRIS_SCHEME").ok();
+    let saved_prefix = std::env::var("IRIS_WEB_PREFIX").ok();
+    let saved_port = std::env::var("IRIS_WEB_PORT").ok();
+
+    std::env::set_var("IRIS_HOST", "127.0.0.2");
+    std::env::set_var("IRIS_SCHEME", "https");
+    std::env::set_var("IRIS_WEB_PREFIX", "secure/iris");
+    std::env::set_var("IRIS_WEB_PORT", "1");
+
+    let result = iris_agentic_dev_core::iris::discovery::discover_iris(None).await;
+
+    match saved_host {
+        Some(v) => std::env::set_var("IRIS_HOST", v),
+        None => std::env::remove_var("IRIS_HOST"),
+    }
+    match saved_scheme {
+        Some(v) => std::env::set_var("IRIS_SCHEME", v),
+        None => std::env::remove_var("IRIS_SCHEME"),
+    }
+    match saved_prefix {
+        Some(v) => std::env::set_var("IRIS_WEB_PREFIX", v),
+        None => std::env::remove_var("IRIS_WEB_PREFIX"),
+    }
+    match saved_port {
+        Some(v) => std::env::set_var("IRIS_WEB_PORT", v),
+        None => std::env::remove_var("IRIS_WEB_PORT"),
+    }
+
+    assert!(
+        matches!(result, IrisDiscovery::Found(_)),
+        "discover_iris with both IRIS_SCHEME and IRIS_WEB_PREFIX should return Found"
+    );
+}
+
+/// Test IRIS_SCHEME with leading slashes gets trimmed (L161)
+/// "https://" → trim_matches('/') → "https:" (colon remains, only slashes are trimmed)
+#[test]
+fn test_iris_scheme_trim_leading_and_trailing_slashes() {
+    // Common case: scheme with trailing slashes like "https://"
+    let scheme = "https://";
+    let trimmed = scheme.trim_matches('/').to_string();
+    // trim_matches('/') only removes / chars, not :, so "https://" becomes "https:"
+    assert_eq!(
+        trimmed, "https:",
+        "scheme with trailing slashes keeps the colon"
+    );
+
+    // Leading slashes: "/https" → "https"
+    let scheme_leading = "/https";
+    let trimmed_leading = scheme_leading.trim_matches('/').to_string();
+    assert_eq!(
+        trimmed_leading, "https",
+        "leading slashes should be trimmed"
+    );
+
+    // No slashes: "https" → "https" (unchanged)
+    let scheme_no_slashes = "https";
+    let trimmed_no_slashes = scheme_no_slashes.trim_matches('/').to_string();
+    assert_eq!(
+        trimmed_no_slashes, "https",
+        "scheme without slashes unchanged"
+    );
+}
+
+/// Test IRIS_WEB_PREFIX with slashes gets trimmed (L166)
+/// "/app/prefix/" should normalize to "app/prefix"
+#[test]
+fn test_iris_web_prefix_trim_slashes() {
+    let prefix = "/app/prefix/";
+    let trimmed = prefix.trim_matches('/').to_string();
+    assert_eq!(
+        trimmed, "app/prefix",
+        "prefix with surrounding slashes should be trimmed"
+    );
+
+    let prefix_slash = "/";
+    let trimmed_slash = prefix_slash.trim_matches('/').to_string();
+    assert!(
+        trimmed_slash.is_empty(),
+        "lone slash should trim to empty, then be filtered to None"
+    );
+}
+
+/// Test the condition that decides whether to bypass normal probe_atelier path (L171)
+/// scheme != "http" || prefix.is_some() → build custom URL path
+#[test]
+fn test_discover_iris_scheme_prefix_bypass_condition() {
+    // Case 1: http + no prefix → don't bypass (probe_atelier path)
+    let scheme = "http";
+    let prefix: Option<String> = None;
+    assert!(
+        !(scheme != "http" || prefix.is_some()),
+        "http + no prefix should NOT bypass"
+    );
+
+    // Case 2: https + no prefix → bypass (custom URL path)
+    let scheme = "https";
+    let prefix_none: Option<String> = None;
+    assert!(
+        scheme != "http" || prefix_none.is_some(),
+        "https + no prefix should bypass"
+    );
+
+    // Case 3: http + prefix → bypass (custom URL path)
+    let scheme = "http";
+    let prefix: Option<String> = Some("iris".to_string());
+    assert!(
+        scheme != "http" || prefix.is_some(),
+        "http + prefix should bypass"
+    );
+
+    // Case 4: https + prefix → bypass (custom URL path)
+    let scheme = "https";
+    let prefix: Option<String> = Some("app/iris".to_string());
+    assert!(
+        scheme != "http" || prefix.is_some(),
+        "https + prefix should bypass"
+    );
 }
