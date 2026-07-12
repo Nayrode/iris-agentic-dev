@@ -1,0 +1,114 @@
+# Skills
+
+Skills are concise instruction files that teach your AI assistant ObjectScript-specific
+patterns and common mistakes. They work with or without the MCP server.
+
+---
+
+## Benchmark results
+
+Tested with Claude Sonnet 4.6 on the ObjectScript repair suite (22 tasks):
+
+| Benchmark suite                | Baseline | With top skill | Lift |
+| ------------------------------ | -------- | -------------- | ---- |
+| ObjectScript repair (22 tasks) | 73%      | **100%**       | +27% |
+
+The top skill is **`objectscript-review`** — a 205-word checklist that catches the 10 most
+common ObjectScript mistakes before the AI writes any code.
+
+The multi-file and SQL-quirks suites referenced in earlier versions of this table are not
+yet ported to the current native benchmark harness (`iris-agentic-dev benchmark`) — only
+the repair suite above is runnable today. See
+[BENCHMARKING.md](../light-skills/BENCHMARKING.md) to run it yourself, including a
+[Limitations](../light-skills/BENCHMARKING.md#limitations) section covering contamination
+risk, single-run variance, and single-model validation caveats.
+
+---
+
+## Installing skills
+
+**VS Code Copilot:** Skills are included automatically when you install the extension.
+
+**Claude Code:**
+
+```bash
+mkdir -p ~/.claude/skills
+for skill in objectscript-review objectscript-guardrails objectscript-sql-patterns; do
+  mkdir -p ~/.claude/skills/$skill
+  curl -sL https://raw.githubusercontent.com/intersystems-community/iris-agentic-dev/master/light-skills/skills/$skill/SKILL.md \
+    > ~/.claude/skills/$skill/SKILL.md
+done
+```
+
+**OpenCode:**
+
+```bash
+mkdir -p ~/.config/opencode/skills
+for skill in objectscript-review objectscript-guardrails objectscript-sql-patterns; do
+  mkdir -p ~/.config/opencode/skills/$skill
+  curl -sL https://raw.githubusercontent.com/intersystems-community/iris-agentic-dev/master/light-skills/skills/$skill/SKILL.md \
+    > ~/.config/opencode/skills/$skill/SKILL.md
+done
+```
+
+---
+
+## Skill inventory
+
+| Skill                        | What it does                                                                                    | Benchmark   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- | ----------- |
+| `objectscript-review`        | Hard-gate checklist: 10 most common AI mistakes in ObjectScript                                 | 100% repair |
+| `objectscript-guardrails`    | All-in-one hard gate, works without MCP                                                         | 86% repair  |
+| `objectscript-sql-patterns`  | IRIS SQL quirks: reserved words, SQLCODE, table naming, NULL handling                           | 100% SQL    |
+| `objectscript-unit-test`     | Generates `%UnitTest` scaffolding from live class introspection                                 | 86% repair  |
+| `objectscript-list-patterns` | `%List`, `$LISTBUILD`, `$LISTNEXT`, `$LISTTOSTRING` patterns                                    | 91% repair  |
+| `objectscript-navigation`    | Codebase discovery using MCP introspection tools                                                | 82% repair  |
+| `objectscript-tdd`           | Compile-test-fix loop for iterative development                                                 |             |
+| `objectscript-debugging`     | Maps `.INT` offsets to `.CLS` source lines, reads error logs                                    |             |
+| `objectscript-repair`        | Coordinated fixes across multiple dependent classes                                             |             |
+| `iris-docs`                  | Fetches live IRIS class reference before implementing any API — eliminates hallucinated methods |             |
+| `iris-vector-ai`             | IRIS vector search syntax (HNSW, `VECTOR_COSINE`, `TO_VECTOR`)                                  | domain      |
+| `iris-connectivity`          | IRIS connection APIs from Python, Java, JDBC, ODBC                                              | domain      |
+| `ensemble-production`        | Interoperability production lifecycle, logs, queues                                             | domain      |
+| `iris-devtester`             | `IRISContainer` factory methods and test fixture patterns                                       | domain      |
+
+"repair" scores are reproducible today via `iris-agentic-dev benchmark --suite jira`.
+"SQL" and "domain" scores predate the current native harness and are not yet
+re-verifiable — see [BENCHMARKING.md](../light-skills/BENCHMARKING.md#additional-suites-not-yet-ported).
+
+---
+
+## Skill loading caution
+
+Some skills hurt if loaded globally:
+
+- `objectscript-loop-patterns` measured **−19% lift** when loaded for all tasks.
+- Domain skills (`iris-vector-ai`, `iris-connectivity`, `ensemble-production`) should only
+  be loaded when working in those areas — loading them for general ObjectScript work adds
+  noise without benefit.
+
+See [BENCHMARKING.md](../light-skills/BENCHMARKING.md) for detailed per-skill results.
+
+---
+
+## MCP-backed skill registry
+
+When the MCP server is running, the learning agent can mine your session history to propose
+new skills and optimize existing ones. Use the `skill` tool:
+
+| Tool                   | What it does                                   |
+| ---------------------- | ---------------------------------------------- |
+| `skill` with `list`    | Show all skills in the registry                |
+| `skill` with `propose` | Mine recent tool calls to propose a new skill  |
+| `skill` with `search`  | Find skills relevant to a topic                |
+| `skill` with `forget`  | Remove a skill from the registry               |
+| `skill_community`      | Browse or install community skills from GitHub |
+
+---
+
+## Contributing a skill
+
+Write a `SKILL.md`, run the benchmark, submit a PR with your results.
+
+See [`light-skills/`](../light-skills/) for the full skill list, benchmark results, and
+contribution guide.

@@ -27,7 +27,7 @@ target/
 .claude/settings.local.json
 benchmark/021/results/
 docs/*.txt
-docs/*.md
+# Article drafts go in ~/writing/iris-agentic-dev/ — not tracked here
 *.profraw
 .specify/
 .opencode/
