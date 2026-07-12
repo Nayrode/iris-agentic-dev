@@ -401,6 +401,8 @@ fn test_handle_iris_doc_get_object_cls() {
             pattern: None,
             category: None,
             max_results: None,
+            expected: None,
+            line: None,
         };
         let r = handle_iris_doc(&conn, &client, p, &elicitation_store).await;
         let v = result_json(r);
@@ -445,6 +447,8 @@ fn test_handle_iris_doc_head_object_cls() {
             pattern: None,
             category: None,
             max_results: None,
+            expected: None,
+            line: None,
         };
         // Must not panic; any structured JSON response is acceptable
         let r = handle_iris_doc(&conn, &client, p, &elicitation_store).await;
@@ -689,6 +693,8 @@ fn test_handle_iris_doc_batch_get() {
             pattern: None,
             category: None,
             max_results: None,
+            expected: None,
+            line: None,
         };
         let r = handle_iris_doc(&conn, &client, p, &elicitation_store).await;
         let v = result_json(r);
@@ -11669,6 +11675,8 @@ async fn test_doc_put_returns_200_with_status_errors() {
             pattern: None,
             category: None,
             max_results: None,
+            expected: None,
+            line: None,
         },
         &elicitation_store,
     )
@@ -11745,6 +11753,8 @@ async fn test_doc_put_compile_non_2xx_compile_request() {
             pattern: None,
             category: None,
             max_results: None,
+            expected: None,
+            line: None,
         },
         &elicitation_store,
     )
@@ -11810,6 +11820,8 @@ async fn test_doc_delete_non_2xx_non_404() {
             pattern: None,
             category: None,
             max_results: None,
+            expected: None,
+            line: None,
         },
         &elicitation_store,
     )
@@ -11873,6 +11885,8 @@ async fn test_doc_put_non_2xx_upload() {
             pattern: None,
             category: None,
             max_results: None,
+            expected: None,
+            line: None,
         },
         &elicitation_store,
     )
