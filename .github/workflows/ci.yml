@@ -94,6 +94,8 @@ jobs:
     # Only sign on master and version tags — not on PRs (no secrets available there anyway)
     if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
     needs: windows-handshake
+    # Non-blocking until IT completes role assignments on the Azure signing account
+    continue-on-error: true
     permissions:
       id-token: write
       contents: read
