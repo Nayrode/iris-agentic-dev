@@ -118,13 +118,16 @@ jobs:
         run: |
           docker run -d --name iris-e2e \
             -p 52773:52773 \
-            --shm-size 512m \
+            --shm-size 1g \
+            --ulimit nofile=65536:65536 \
             -e IRIS_PASSWORD=SYS \
             -e IRIS_USERNAME=_SYSTEM \
             ${{ matrix.iris_image }}
-          # Wait for container to be running
-          sleep 10
-          docker ps | grep iris-e2e
+          # Wait for container to be running and dump early logs for diagnostics
+          sleep 15
+          docker ps -a | grep iris-e2e
+          echo "=== Early container logs ==="
+          docker logs iris-e2e 2>&1 | head -40 || true
       - name: Wait for IRIS Atelier API to be ready (up to 7 minutes)
         run: |
           IRIS_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' iris-e2e)
@@ -148,7 +151,8 @@ jobs:
             sleep 5
           done
           echo "IRIS did not become ready in 7 minutes"
-          docker logs iris-e2e 2>&1 | tail -20
+          echo "=== Full container logs ==="
+          docker logs iris-e2e 2>&1 | tail -80
           exit 1
       - name: Detect and set IRIS credentials
         run: |
