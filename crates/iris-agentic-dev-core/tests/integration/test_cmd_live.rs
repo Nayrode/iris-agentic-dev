@@ -59,7 +59,7 @@ fn test_exec_help_exits_zero() {
     }
 
     let output = Command::new(&bin)
-        .args(&["exec", "--help"])
+        .args(["exec", "--help"])
         .output()
         .expect("failed to run iris-agentic-dev");
 
@@ -86,7 +86,7 @@ fn test_doc_help_exits_zero() {
     }
 
     let output = Command::new(&bin)
-        .args(&["doc", "--help"])
+        .args(["doc", "--help"])
         .output()
         .expect("failed to run iris-agentic-dev");
 
@@ -107,7 +107,7 @@ fn test_compile_help_exits_zero() {
     }
 
     let output = Command::new(&bin)
-        .args(&["compile", "--help"])
+        .args(["compile", "--help"])
         .output()
         .expect("failed to run iris-agentic-dev");
 
@@ -128,7 +128,7 @@ fn test_query_help_exits_zero() {
     }
 
     let output = Command::new(&bin)
-        .args(&["query", "--help"])
+        .args(["query", "--help"])
         .output()
         .expect("failed to run iris-agentic-dev");
 
@@ -149,7 +149,7 @@ fn test_tool_help_exits_zero() {
     }
 
     let output = Command::new(&bin)
-        .args(&["tool", "--help"])
+        .args(["tool", "--help"])
         .output()
         .expect("failed to run iris-agentic-dev");
 
@@ -171,7 +171,7 @@ fn test_mcp_exits_when_stdin_closes() {
 
     // Stdin closed immediately — MCP server should exit.
     let output = Command::new(&bin)
-        .args(&["mcp"])
+        .args(["mcp"])
         .stdin(std::process::Stdio::null())
         .output()
         .expect("failed to run iris-agentic-dev");
@@ -203,7 +203,7 @@ fn test_exec_write_version() {
     };
 
     let output = Command::new(&bin)
-        .args(&["exec", "-n", "USER", "write $ZVERSION,!"])
+        .args(["exec", "-n", "USER", "write $ZVERSION,!"])
         .envs(envs)
         .output()
         .expect("failed to run iris-agentic-dev");
@@ -244,7 +244,7 @@ fn test_doc_get_library_object() {
 
     // First put a class so we have something to get
     let put_output = Command::new(&bin)
-        .args(&["doc", "put", "-", "CmdLiveTestGet.cls"])
+        .args(["doc", "put", "-", "CmdLiveTestGet.cls"])
         .envs(envs.clone())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -267,7 +267,7 @@ fn test_doc_get_library_object() {
 
     // doc get takes CLASSNAME as a positional arg; namespace via env IRIS_NAMESPACE
     let output = Command::new(&bin)
-        .args(&["doc", "get", "CmdLiveTestGet.cls"])
+        .args(["doc", "get", "CmdLiveTestGet.cls"])
         .envs(envs)
         .output()
         .expect("failed to run iris-agentic-dev");
@@ -307,7 +307,7 @@ fn test_compile_existing_class() {
     std::fs::write(&cls_path, "Class CmdLiveTest {}").unwrap();
 
     let output = Command::new(&bin)
-        .args(&["compile", "-n", "USER", cls_path.to_str().unwrap()])
+        .args(["compile", "-n", "USER", cls_path.to_str().unwrap()])
         .envs(envs)
         .output()
         .expect("failed to run iris-agentic-dev");
