@@ -28,6 +28,7 @@ target/
 benchmark/021/results/
 docs/*.txt
 # Article drafts go in ~/writing/iris-agentic-dev/ — not tracked here
+docs/roadmap-internal.md
 *.profraw
 .specify/
 .opencode/
@@ -41,6 +42,7 @@ run_benchmark.py
 *.pptx
 /*.cls
 /*.md
+!ROADMAP.md
 /Bench/
 /EvalDemo/
 /EvalDemo.*
