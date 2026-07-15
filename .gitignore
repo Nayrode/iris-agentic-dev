@@ -43,6 +43,7 @@ run_benchmark.py
 /*.cls
 /*.md
 !ROADMAP.md
+!CONTRIBUTING.md
 /Bench/
 /EvalDemo/
 /EvalDemo.*
