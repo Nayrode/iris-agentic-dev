@@ -273,7 +273,15 @@ impl IrisConnection {
                 .execute_via_generator_once(code, namespace, client)
                 .await
             {
-                Ok(output) => return Ok(output),
+                Ok(output) => {
+                    if attempt > 0 {
+                        tracing::info!(
+                            "execute_via_generator succeeded on attempt {}",
+                            attempt + 1
+                        );
+                    }
+                    return Ok(output);
+                }
                 Err(e) => {
                     let msg = e.to_string();
                     let msg_lower = msg.to_ascii_lowercase();
@@ -296,7 +304,9 @@ impl IrisConnection {
                     if !is_retryable || attempt == delays.len() - 1 {
                         return Err(e);
                     }
-                    tracing::warn!(
+                    // Transient on cold-start (private web server still warming up) — debug only;
+                    // the success path logs at info so a recovery is still visible when needed.
+                    tracing::debug!(
                         "execute_via_generator attempt {} failed ({}), retrying in {:?}",
                         attempt + 1,
                         msg,
