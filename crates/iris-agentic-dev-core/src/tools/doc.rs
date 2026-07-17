@@ -88,6 +88,11 @@ pub struct IrisDocParams {
     ///
     /// REQUIRED for mode=delete_lines and for a positional insert (when `line` is set).
     /// Only omit it for an append (mode=insert with no `line`), which is non-destructive.
+    ///
+    /// To anchor a BLANK line, pass the literal `<BLANK>` (do NOT pass an empty string
+    /// "" — some tool-use layers drop the entire call when any field is empty). For a
+    /// multi-line delete_lines block, use `<BLANK>` on each blank line, e.g.
+    /// "foo\n<BLANK>\nbar".
     pub expected: Option<String>,
     // mode=compiled params
     /// Compiled form type: "INT" (default) or "OBJ"
@@ -913,6 +918,26 @@ fn unified_diff(before: &[String], del_start: usize, del_len: usize, add: &[Stri
     out
 }
 
+/// Sentinel `expected` value meaning "the anchored line(s) are blank". A caller
+/// cannot pass `expected: ""` to anchor a blank line: several tool-use layers drop
+/// the *entire* argument object when any string field is the empty string (the same
+/// class of bug that motivates the flat-schema note on `DocMode`). So a blank-line
+/// anchor is expressed with this sentinel, which `resolve_expected` maps back to "".
+pub const BLANK_ANCHOR: &str = "<BLANK>";
+
+/// Normalize a caller-supplied `expected` into the text to compare against the live
+/// document. The `<BLANK>` sentinel (see [`BLANK_ANCHOR`]) becomes an empty anchor;
+/// everything else passes through unchanged. Each newline-separated line is mapped
+/// independently, so a multi-line `delete_lines` block can mix real and blank lines
+/// (e.g. `"foo\n<BLANK>\nbar"`).
+fn resolve_expected(expected: &str) -> String {
+    expected
+        .split('\n')
+        .map(|l| if l == BLANK_ANCHOR { "" } else { l })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Compare `expected` (multi-line) against `actual` lines, ignoring trailing
 /// whitespace on each line and a single trailing blank line on either side.
 /// Returns None if they match, or Some((line_offset, expected_line, actual_line))
@@ -1018,7 +1043,8 @@ async fn handle_insert(
         return err_json(
             "MISSING_PARAMS",
             "expected is required for a positional insert (when `line` is set): pass the line \
-             currently at that position. Omit `line` to append at end of file.",
+             currently at that position (use the literal `<BLANK>` if that line is blank, not \
+             an empty string). Omit `line` to append at end of file.",
         );
     }
 
@@ -1034,20 +1060,24 @@ async fn handle_insert(
         return err_json("INVALID_PARAMS", "line must be >= 1");
     }
 
-    // Stale-edit guard: the line currently at `at` must match `expected`.
+    // Stale-edit guard: the line currently at `at` must match `expected`. A blank
+    // target line is anchored with the `<BLANK>` sentinel (empty strings get dropped
+    // by some tool-use layers), so resolve it before comparing.
     if let Some(exp) = p.expected.as_deref() {
+        let exp = resolve_expected(exp);
         let target = existing
             .get((at - 1) as usize)
             .cloned()
             .into_iter()
             .collect::<Vec<_>>();
-        if let Some(diff) = diff_expected(exp, &target) {
+        if let Some(diff) = diff_expected(&exp, &target) {
             return stale_content_err(diff, at);
         }
     }
 
     let block: Vec<String> = block_src.lines().map(|s| s.to_string()).collect();
     let (new_lines, actual_at) = apply_insert(&existing, at, &block);
+    let predicted_total = new_lines.len();
     let new_content = new_lines.join("\n");
     // Build the diff before the write, while we still hold before/after in memory (no extra
     // IRIS round-trip). An insert removes nothing at (actual_at - 1) and adds `block` there.
@@ -1064,7 +1094,7 @@ async fn handle_insert(
         checkout_cache,
     )
     .await?;
-    Ok(finalize_edit(
+    Ok(finalize_edit_checked(
         iris,
         client,
         name,
@@ -1076,6 +1106,7 @@ async fn handle_insert(
             "lines_added": block.len(),
             "diff": diff,
         }),
+        Some(predicted_total),
     )
     .await)
 }
@@ -1116,7 +1147,8 @@ async fn handle_delete_lines(
             return err_json(
                 "MISSING_PARAMS",
                 "expected is required for mode=delete_lines: pass the exact text currently \
-                 occupying lines start..end (re-fetch with mode=get/fragment if unsure).",
+                 occupying lines start..end (use the literal `<BLANK>` for any blank line, not \
+                 an empty string; re-fetch with mode=get/fragment if unsure).",
             )
         }
     };
@@ -1138,12 +1170,16 @@ async fn handle_delete_lines(
     }
 
     // Stale-edit guard: the block at start..end must match `expected` before we cut it.
+    // Blank lines in the block are anchored with the `<BLANK>` sentinel (empty strings
+    // get dropped by some tool-use layers), so resolve it before comparing.
+    let expected = resolve_expected(expected);
     let target = slice_lines(&existing, start, end).0;
-    if let Some(diff) = diff_expected(expected, &target) {
+    if let Some(diff) = diff_expected(&expected, &target) {
         return stale_content_err(diff, start);
     }
 
     let (new_lines, removed, actual_start, actual_end) = apply_delete_lines(&existing, start, end);
+    let predicted_total = new_lines.len();
     if removed == 0 {
         return err_json(
             "INVALID_PARAMS",
@@ -1174,7 +1210,7 @@ async fn handle_delete_lines(
         checkout_cache,
     )
     .await?;
-    Ok(finalize_edit(
+    Ok(finalize_edit_checked(
         iris,
         client,
         name,
@@ -1187,6 +1223,7 @@ async fn handle_delete_lines(
             "lines_removed": removed,
             "diff": diff,
         }),
+        Some(predicted_total),
     )
     .await)
 }
@@ -1204,6 +1241,27 @@ async fn finalize_edit(
     result: rmcp::model::CallToolResult,
     extra: serde_json::Value,
 ) -> rmcp::model::CallToolResult {
+    finalize_edit_checked(iris, client, name, namespace, result, extra, None).await
+}
+
+/// Finalize a surgical edit, optionally reconciling the caller's predicted line count
+/// with what IRIS actually stored. IRIS normalizes UDL on write — most notably it
+/// collapses blank lines between class members — so the document we spliced in memory
+/// can be renumbered server-side. When `expected_total` is provided and disagrees with
+/// the authoritative re-fetched line count, we flag `normalized_by_iris: true`, attach a
+/// `warning`, and mark the pre-write `diff` approximate: the splice-based line numbers
+/// (`inserted_at`/`deleted_*`) and diff no longer describe the stored document, so the
+/// caller MUST re-read before chaining another surgical edit or it will edit the wrong
+/// lines. The re-fetched `content`/`total_lines` returned here are authoritative.
+async fn finalize_edit_checked(
+    iris: &IrisConnection,
+    client: &reqwest::Client,
+    name: &str,
+    namespace: &str,
+    result: rmcp::model::CallToolResult,
+    extra: serde_json::Value,
+    expected_total: Option<usize>,
+) -> rmcp::model::CallToolResult {
     // Only re-fetch on a successful write.
     let succeeded = result
         .content
@@ -1216,9 +1274,32 @@ async fn finalize_edit(
     let mut extra = extra;
     if succeeded {
         if let Ok(Some(lines)) = fetch_doc_lines(iris, client, name, namespace).await {
+            let actual_total = lines.len();
             if let Some(obj) = extra.as_object_mut() {
-                obj.insert("total_lines".to_string(), serde_json::json!(lines.len()));
+                obj.insert("total_lines".to_string(), serde_json::json!(actual_total));
                 obj.insert("content".to_string(), serde_json::json!(lines.join("\n")));
+                // Reconcile predicted vs stored line count: a mismatch means IRIS
+                // renumbered the document, so the splice-based positions and diff are
+                // stale. Surface it loudly rather than let the caller chain blind.
+                if let Some(pred) = expected_total {
+                    if pred != actual_total {
+                        obj.insert("normalized_by_iris".to_string(), serde_json::json!(true));
+                        obj.insert(
+                            "warning".to_string(),
+                            serde_json::json!(format!(
+                                "IRIS renumbered this document on write (predicted {pred} lines, \
+                                 stored {actual_total}) — typically by collapsing blank lines \
+                                 between class members. The `diff` and reported line positions \
+                                 are approximate; use the returned `content`/`total_lines` and \
+                                 re-read before chaining another edit."
+                            )),
+                        );
+                        if let Some(d) = obj.get("diff").cloned() {
+                            obj.insert("diff_approximate".to_string(), serde_json::json!(true));
+                            obj.insert("diff".to_string(), d);
+                        }
+                    }
+                }
             }
         }
     }
@@ -2485,6 +2566,33 @@ mod tests {
         let (out, removed, _, _) = apply_delete_lines(&lines, 1, 3);
         assert!(out.is_empty());
         assert_eq!(removed, 3);
+    }
+
+    // ── resolve_expected (blank-line anchor sentinel) ─────────────────────────
+    #[test]
+    fn test_resolve_expected_blank_sentinel_becomes_empty() {
+        assert_eq!(resolve_expected(BLANK_ANCHOR), "");
+    }
+
+    #[test]
+    fn test_resolve_expected_plain_text_passes_through() {
+        assert_eq!(resolve_expected("ClassMethod A()"), "ClassMethod A()");
+    }
+
+    #[test]
+    fn test_resolve_expected_multiline_mixed_blank_and_text() {
+        assert_eq!(
+            resolve_expected(&format!("foo\n{BLANK_ANCHOR}\nbar")),
+            "foo\n\nbar"
+        );
+    }
+
+    #[test]
+    fn test_resolve_expected_sentinel_matches_blank_anchor_line() {
+        // The end-to-end shape: <BLANK> resolves to "" which diff_expected then
+        // matches against an actual blank line with no divergence.
+        let resolved = resolve_expected(BLANK_ANCHOR);
+        assert!(diff_expected(&resolved, &v(&[""])).is_none());
     }
 
     // ── unified_diff (rendered markdown diff) ─────────────────────────────────

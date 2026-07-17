@@ -104,7 +104,7 @@ write-gated (suppressed on Live instances unless `IRIS_ALLOW_PROD=1`).
 | ----------------------- | -------------------------------------------------------------------------------- |
 | `POLICY_GATE`           | Call blocked by per-connection policy — see `allow` in `.iris-agentic-dev.toml`  |
 | `SCOPE_REQUIRED`        | `iris_search` called without a document scope — pass a `documents` wildcard list |
-| `STALE_CONTENT`         | `iris_doc` insert/delete_lines `expected` field didn't match stored content      |
+| `STALE_CONTENT`         | `iris_doc` insert/delete_lines `expected` field didn't match stored content (anchor a blank line with the literal `<BLANK>`, never an empty string) |
 | `CODE_EDIT_BLOCKED`     | Write to a `%` system class blocked by the code-edit gate                        |
 | `CHECKIN_BLOCKED`       | SCM CheckIn called without `IRIS_SCM_ALLOW_CHECKIN=1`                            |
 | `HTTP_EXECUTION_FAILED` | Atelier HTTP call failed — check host, port, credentials                         |
