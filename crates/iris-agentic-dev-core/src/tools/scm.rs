@@ -360,8 +360,33 @@ pub async fn handle_iris_source_control(
 
             match action_code {
                 0 => {
-                    // A completed execute (undo checkout / checkin / disconnect / …) changes
-                    // checkout state — drop any cached entry so the next write re-probes.
+                    // action=0 means UserAction wants no confirmation dialog — but the operation
+                    // is NOT committed until AfterUserAction runs. Returning success here on
+                    // UserAction alone was a false positive: %AddToSourceControl / %UndoAdd
+                    // appeared to succeed but nothing actually happened, and SCM-blocked deletes
+                    // silently returned success instead of the error from AfterUserAction.
+                    let after_code = after_user_action_code(
+                        action_id,
+                        doc,
+                        "yes",
+                        &iris.username,
+                        &iris.password,
+                    );
+                    match xecute(iris, client, &after_code, ns).await {
+                        Ok(o) => {
+                            let aout = o.lines().next().unwrap_or("").trim().to_string();
+                            if !aout.is_empty() && aout != "SCM_UNAVAILABLE" {
+                                return err_json("SCM_ACTION_FAILED", &aout);
+                            }
+                        }
+                        Err(e) => {
+                            return ok_json(serde_json::json!({
+                                "success": false,
+                                "error_code": "SCM_UNAVAILABLE",
+                                "error": e.to_string(),
+                            }))
+                        }
+                    }
                     checkout_cache.invalidate(ns, doc);
                     ok_json(
                         serde_json::json!({"success": true, "document": doc, "action_id": action_id}),
