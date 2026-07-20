@@ -752,12 +752,30 @@ async fn handle_delete(
     // HTTP status. Without this check we'd report success:true for a delete that never happened —
     // a dangerous false positive for any caller that trusts it (mirrors the put path above).
     let del_body: serde_json::Value = resp.json().await.unwrap_or_default();
+    // Check top-level status.errors (e.g. build 110 namespace bug, ERROR #5845 locked doc).
     if let Some(errs) = del_body["status"]["errors"].as_array() {
         if !errs.is_empty() {
             let msg = errs[0]["error"]
                 .as_str()
                 .unwrap_or("Document delete failed");
             return err_json("DELETE_FAILED", msg);
+        }
+    }
+    // Perforce (and some other SCM providers) report the block in result.status (a string like
+    // "ERROR #5001: NOTICE: File is currently checked out…") rather than status.errors.
+    if let Some(status_str) = del_body["result"]["status"].as_str() {
+        if status_str.contains("ERROR") {
+            return err_json("DELETE_FAILED", status_str);
+        }
+    }
+    // Also check the console array for error lines — some providers only write there.
+    if let Some(console) = del_body["console"].as_array() {
+        for line in console {
+            if let Some(s) = line.as_str() {
+                if s.contains("ERROR") {
+                    return err_json("DELETE_FAILED", s);
+                }
+            }
         }
     }
     ok_json(serde_json::json!({"success": true, "name": name}))
