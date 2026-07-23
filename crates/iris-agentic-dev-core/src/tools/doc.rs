@@ -48,7 +48,7 @@ pub struct IrisDocParams {
     /// delete=remove, head=check existence, fragment=read a line range, compiled=read
     /// INT form, list=glob docnames, insert=splice `content` before 1-based `line`
     /// (omit `line` to append at EOF), delete_lines=remove inclusive `start`..`end`
-    /// (requires `expected`).
+    /// (requires `expected`; pass `new_lines` to REPLACE the range instead of delete).
     #[serde(default = "default_mode", alias = "action")]
     pub mode: String,
     /// Document name e.g. 'MyApp.Patient.cls'
@@ -94,6 +94,14 @@ pub struct IrisDocParams {
     /// multi-line delete_lines block, use `<BLANK>` on each blank line, e.g.
     /// "foo\n<BLANK>\nbar".
     pub expected: Option<String>,
+    /// Optional replacement for mode=delete_lines: when set, the `start`..`end` range is
+    /// REPLACED by these lines (split on "\n") instead of merely deleted — an atomic,
+    /// single-round-trip edit that avoids the delete-then-insert race where IRIS renumbers
+    /// the document between the two calls. Omit it for a pure delete. `expected` is still
+    /// required (it guards the range being overwritten). The replacement need not have the
+    /// same line count as the removed range.
+    #[serde(alias = "replacement")]
+    pub new_lines: Option<String>,
     // mode=compiled params
     /// Compiled form type: "INT" (default) or "OBJ"
     pub compiled_type: Option<String>,
@@ -883,6 +891,29 @@ pub fn apply_delete_lines(lines: &[String], start: i64, end: i64) -> (Vec<String
     (out, removed, actual_start, actual_end)
 }
 
+/// Replace the 1-based inclusive line range [start, end] with `block` in one pass.
+/// This is delete + insert-at-same-spot fused: the removed range is cut and `block`
+/// is spliced back in where it began, so the edit is atomic (no intermediate document
+/// state that IRIS could renumber between two calls). An empty `block` degenerates to
+/// a pure delete. Returns (new_lines, removed_count, actual_start, actual_end); bounds
+/// are clamped identically to [`apply_delete_lines`], and a start past EOF replaces
+/// nothing (removed = 0) rather than appending.
+pub fn apply_replace_lines(
+    lines: &[String],
+    start: i64,
+    end: i64,
+    block: &[String],
+) -> (Vec<String>, i64, i64, i64) {
+    let (after_delete, removed, actual_start, actual_end) = apply_delete_lines(lines, start, end);
+    if removed == 0 {
+        return (after_delete, 0, actual_start, actual_end);
+    }
+    let idx = (actual_start - 1) as usize;
+    let mut out = after_delete;
+    out.splice(idx..idx, block.iter().cloned());
+    (out, removed, actual_start, actual_end)
+}
+
 /// Number of unchanged context lines shown around a change in the rendered diff.
 const DIFF_CONTEXT: usize = 3;
 
@@ -1196,8 +1227,17 @@ async fn handle_delete_lines(
         return stale_content_err(diff, start);
     }
 
-    let (new_lines, removed, actual_start, actual_end) = apply_delete_lines(&existing, start, end);
-    let predicted_total = new_lines.len();
+    // Optional replacement: when `new_lines` is set, the range is swapped for it in one
+    // atomic write instead of merely deleted — no delete-then-insert race where IRIS
+    // renumbers the doc between the two calls. Empty ("") is a pure delete.
+    let replacement: Vec<String> = match p.new_lines.as_deref() {
+        Some(r) if !r.is_empty() => r.lines().map(|s| s.to_string()).collect(),
+        _ => Vec::new(),
+    };
+    let is_replace = !replacement.is_empty();
+
+    let (final_lines, removed, actual_start, actual_end) =
+        apply_replace_lines(&existing, start, end, &replacement);
     if removed == 0 {
         return err_json(
             "INVALID_PARAMS",
@@ -1207,14 +1247,17 @@ async fn handle_delete_lines(
             ),
         );
     }
-    let new_content = new_lines.join("\n");
+    let predicted_total = final_lines.len();
+    let new_content = final_lines.join("\n");
+
     // Build the diff before the write, while we still hold before/after in memory (no extra
-    // IRIS round-trip). delete_lines removes [actual_start, actual_end] and adds nothing.
+    // IRIS round-trip). The changed span is [actual_start, actual_end] on the old side,
+    // replaced by `replacement` (empty for a pure delete).
     let diff = unified_diff(
         &existing,
         (actual_start - 1) as usize,
         removed as usize,
-        &[],
+        &replacement,
     );
 
     let result = write_with_scm(
@@ -1235,10 +1278,11 @@ async fn handle_delete_lines(
         &p.namespace,
         result,
         serde_json::json!({
-            "edit": "delete_lines",
+            "edit": if is_replace { "replace_lines" } else { "delete_lines" },
             "deleted_start": actual_start,
             "deleted_end": actual_end,
             "lines_removed": removed,
+            "lines_added": replacement.len(),
             "diff": diff,
         }),
         Some(predicted_total),
@@ -1730,40 +1774,63 @@ pub async fn handle_iris_execute_method(
 /// Returns (content_without_storage, storage_was_present).
 /// IRIS 2025.1 UDL parser fails on explicit Storage XML blocks (#5559);
 /// omitting them lets IRIS auto-generate correct storage on first compile.
+///
+/// A genuine Storage definition is a top-level class member, so it always begins
+/// at column 0. We require that here: without it, ANY line whose first two tokens
+/// are `Storage <word>` — including comment text like an indented `Storage cleanup
+/// notes` inside a `/* ... */` block or a method body — was mistaken for a Storage
+/// member and silently deleted along with everything up to the next balanced brace.
+/// That is the "surgical edit ate my comments" bug: the stripper runs on every write
+/// path (put/insert/delete_lines), so an edit that never touched the comment still
+/// dropped it. `///` and `//` comment lines are safe even at column 0 because their
+/// first token is the comment marker, not `Storage`.
 pub fn strip_storage_blocks(content: &str) -> (String, bool) {
     let mut result = Vec::new();
     let mut in_storage = false;
+    // Whether the block's opening `{` has been seen yet. IRIS's canonical UDL export
+    // puts the brace on the line AFTER `Storage Name`, so we must not treat depth==0
+    // as "block closed" until we've actually seen it open — otherwise the whole XML
+    // body leaks through. Only when `opened && brace_depth <= 0` is the block finished.
+    let mut opened = false;
     let mut brace_depth: i32 = 0;
     let mut found = false;
 
     for line in content.lines() {
-        let trimmed = line.trim();
-
         if !in_storage {
-            // Detect start of Storage block: "Storage Name" or "Storage Name {"
-            let is_storage_start = {
-                let mut parts = trimmed.split_whitespace();
+            // Detect start of a real Storage member: "Storage Name" / "Storage Name {"
+            // at column 0. The column-0 requirement is what excludes indented comment
+            // text that merely happens to start with the word "Storage".
+            let is_storage_start = !line.starts_with([' ', '\t']) && {
+                let mut parts = line.split_whitespace();
                 parts.next() == Some("Storage") && parts.next().is_some()
             };
             if is_storage_start {
                 in_storage = true;
                 found = true;
-                // Count any opening braces on this line
-                brace_depth += line.chars().filter(|&c| c == '{').count() as i32;
-                brace_depth -= line.chars().filter(|&c| c == '}').count() as i32;
-                if brace_depth <= 0 {
-                    // Single-line storage (rare) — done immediately
-                    in_storage = false;
-                    brace_depth = 0;
+                opened = false;
+                let opens = line.chars().filter(|&c| c == '{').count() as i32;
+                let closes = line.chars().filter(|&c| c == '}').count() as i32;
+                brace_depth = opens - closes;
+                if opens > 0 {
+                    opened = true;
+                    if brace_depth <= 0 {
+                        // Single-line storage, e.g. "Storage Default {}" — done at once.
+                        in_storage = false;
+                    }
                 }
+                // opens == 0: the brace is on a later line — keep waiting (stay in_storage).
                 continue; // skip this line
             }
             result.push(line);
         } else {
-            // Inside storage block — track brace depth
-            brace_depth += line.chars().filter(|&c| c == '{').count() as i32;
-            brace_depth -= line.chars().filter(|&c| c == '}').count() as i32;
-            if brace_depth <= 0 {
+            // Inside (or waiting to open) a storage block — track brace depth.
+            let opens = line.chars().filter(|&c| c == '{').count() as i32;
+            let closes = line.chars().filter(|&c| c == '}').count() as i32;
+            if opens > 0 {
+                opened = true;
+            }
+            brace_depth += opens - closes;
+            if opened && brace_depth <= 0 {
                 in_storage = false;
                 brace_depth = 0;
                 // Don't add this closing-brace line to result
@@ -2364,12 +2431,99 @@ mod tests {
 
     #[test]
     fn test_strip_storage_blocks_storage_multiple_lines_no_brace_on_first() {
-        // Storage block where opening brace is on next line
+        // Storage block where opening brace is on next line — IRIS's CANONICAL UDL
+        // export format. Regression: the old code hit `brace_depth <= 0` on the
+        // brace-less "Storage Default" line and exited before the block opened, leaking
+        // the entire XML body. The body must be fully stripped, not just the header.
         let cls = "Class Foo {\nStorage Default\n{\n<Type>T</Type>\n}\n}";
         let (stripped, flag) = strip_storage_blocks(cls);
         assert!(flag);
         assert!(!stripped.contains("Storage Default"));
+        assert!(
+            !stripped.contains("<Type>T</Type>"),
+            "XML body must be stripped: {stripped:?}"
+        );
         assert!(stripped.contains("Class Foo"));
+    }
+
+    #[test]
+    fn test_strip_storage_blocks_canonical_export_full_body() {
+        // A realistic %Persistent Storage block as IRIS exports it (brace on next line,
+        // multi-line XML). Every XML line must be gone; the property above it kept.
+        let cls = "Class Foo Extends %Persistent\n{\nProperty Name As %String;\n\nStorage Default\n{\n<Data name=\"FooDefaultData\">\n<Value name=\"1\">\n<Value>%%CLASSNAME</Value>\n</Value>\n</Data>\n<DataLocation>^FooD</DataLocation>\n<Type>%Storage.Persistent</Type>\n}\n}";
+        let (stripped, flag) = strip_storage_blocks(cls);
+        assert!(flag);
+        assert!(stripped.contains("Property Name As %String;"));
+        assert!(!stripped.contains("Storage Default"));
+        assert!(!stripped.contains("FooDefaultData"));
+        assert!(!stripped.contains("DataLocation"));
+        assert!(!stripped.contains("%Storage.Persistent"));
+        assert!(!stripped.contains("%%CLASSNAME"));
+        // Nothing but the class body should remain after the property.
+        assert!(stripped.trim_end().ends_with('}'));
+    }
+
+    #[test]
+    fn test_strip_storage_blocks_ignores_indented_storage_in_block_comment() {
+        // Regression: an indented line whose first word is "Storage" inside a /* */
+        // comment was mistaken for a Storage member and silently deleted, dropping
+        // the comment on every write (put/insert/delete_lines). It must survive now.
+        let cls = "Class Foo\n{\nMethod Alpha()\n{\n    /*\n    Storage cleanup notes go here.\n    This whole block is just a comment.\n    */\n    Quit $$$OK\n}\n}";
+        let (stripped, flag) = strip_storage_blocks(cls);
+        assert!(!flag, "no real Storage member — nothing to strip");
+        assert!(
+            stripped.contains("Storage cleanup notes go here."),
+            "indented comment line must not be stripped: {stripped:?}"
+        );
+        assert!(stripped.contains("This whole block is just a comment."));
+    }
+
+    #[test]
+    fn test_strip_storage_blocks_ignores_indented_storage_with_brace_in_comment() {
+        // Worse case: the fake "Storage ... {" carried a brace, so the old code ate
+        // every line up to the balancing "}" — four comment lines gone.
+        let cls = "Class Foo\n{\nMethod Alpha()\n{\n    /*\n    Storage details {\n        line one of notes\n        line two of notes\n    }\n    more notes after brace\n    */\n    Quit $$$OK\n}\n}";
+        let (stripped, flag) = strip_storage_blocks(cls);
+        assert!(!flag, "no real Storage member — nothing to strip");
+        assert!(stripped.contains("Storage details {"));
+        assert!(stripped.contains("line one of notes"));
+        assert!(stripped.contains("line two of notes"));
+        assert!(stripped.contains("more notes after brace"));
+    }
+
+    #[test]
+    fn test_strip_storage_blocks_ignores_doc_comment_starting_with_storage_at_col0() {
+        // A class/method doc comment "/// Storage pour le xxx" sits at column 0 (no
+        // leading whitespace), so the column-0 guard alone wouldn't save it — but the
+        // first whitespace token is "///", not "Storage", so it is NOT a Storage member.
+        // Both the comment AND the method it documents must survive untouched.
+        let cls = "Class Foo\n{\n/// Storage pour le xxx\nMethod DoIt() As %Status\n{\n    Quit $$$OK\n}\n}";
+        let (stripped, flag) = strip_storage_blocks(cls);
+        assert!(!flag, "a /// doc comment is not a Storage member");
+        assert!(stripped.contains("/// Storage pour le xxx"));
+        assert!(stripped.contains("Method DoIt() As %Status"));
+        assert!(stripped.contains("Quit $$$OK"));
+    }
+
+    #[test]
+    fn test_strip_storage_blocks_ignores_line_comment_starting_with_storage_at_col0() {
+        // Same for a "// Storage ..." line comment at column 0: first token is "//".
+        let cls = "Class Foo\n{\nMethod DoIt()\n{\n// Storage note at col 0\n    Quit $$$OK\n}\n}";
+        let (stripped, flag) = strip_storage_blocks(cls);
+        assert!(!flag);
+        assert!(stripped.contains("// Storage note at col 0"));
+    }
+
+    #[test]
+    fn test_strip_storage_blocks_still_strips_real_member_after_comment_mention() {
+        // A comment mentioning Storage must survive, AND a genuine column-0 Storage
+        // member elsewhere must still be stripped — the two behaviors coexist.
+        let cls = "Class Foo\n{\nMethod Alpha()\n{\n    // Storage notes: keep me\n    Quit $$$OK\n}\nStorage Default {\n<Type>T</Type>\n}\n}";
+        let (stripped, flag) = strip_storage_blocks(cls);
+        assert!(flag, "real Storage member should still be detected");
+        assert!(stripped.contains("// Storage notes: keep me"));
+        assert!(!stripped.contains("Storage Default"));
+        assert!(!stripped.contains("<Type>T</Type>"));
     }
 
     // ── Additional doc_content_to_string edge cases ────────────────────────────
@@ -2584,6 +2738,72 @@ mod tests {
         let (out, removed, _, _) = apply_delete_lines(&lines, 1, 3);
         assert!(out.is_empty());
         assert_eq!(removed, 3);
+    }
+
+    // ── apply_replace_lines ───────────────────────────────────────────────────
+    #[test]
+    fn test_apply_replace_lines_same_count() {
+        let lines = v(&["a", "b", "c", "d"]);
+        let (out, removed, s, e) = apply_replace_lines(&lines, 2, 3, &v(&["X", "Y"]));
+        assert_eq!(out, v(&["a", "X", "Y", "d"]));
+        assert_eq!(removed, 2);
+        assert_eq!((s, e), (2, 3));
+    }
+
+    #[test]
+    fn test_apply_replace_lines_grows() {
+        // Replacement longer than the removed range.
+        let lines = v(&["a", "b", "c"]);
+        let (out, removed, _, _) = apply_replace_lines(&lines, 2, 2, &v(&["X", "Y", "Z"]));
+        assert_eq!(out, v(&["a", "X", "Y", "Z", "c"]));
+        assert_eq!(removed, 1);
+    }
+
+    #[test]
+    fn test_apply_replace_lines_shrinks() {
+        // Replacement shorter than the removed range.
+        let lines = v(&["a", "b", "c", "d"]);
+        let (out, removed, _, _) = apply_replace_lines(&lines, 2, 4, &v(&["X"]));
+        assert_eq!(out, v(&["a", "X"]));
+        assert_eq!(removed, 3);
+    }
+
+    #[test]
+    fn test_apply_replace_lines_empty_block_is_pure_delete() {
+        // Empty replacement degenerates to apply_delete_lines behavior.
+        let lines = v(&["a", "b", "c"]);
+        let (out, removed, s, e) = apply_replace_lines(&lines, 2, 2, &[]);
+        assert_eq!(out, v(&["a", "c"]));
+        assert_eq!(removed, 1);
+        assert_eq!((s, e), (2, 2));
+    }
+
+    #[test]
+    fn test_apply_replace_lines_at_start() {
+        let lines = v(&["a", "b", "c"]);
+        let (out, removed, _, _) = apply_replace_lines(&lines, 1, 1, &v(&["HEAD"]));
+        assert_eq!(out, v(&["HEAD", "b", "c"]));
+        assert_eq!(removed, 1);
+    }
+
+    #[test]
+    fn test_apply_replace_lines_end_clamped() {
+        // end past EOF is clamped; the tail is replaced.
+        let lines = v(&["a", "b", "c"]);
+        let (out, removed, s, e) = apply_replace_lines(&lines, 2, 999, &v(&["X"]));
+        assert_eq!(out, v(&["a", "X"]));
+        assert_eq!(removed, 2);
+        assert_eq!((s, e), (2, 3));
+    }
+
+    #[test]
+    fn test_apply_replace_lines_start_past_eof_replaces_nothing() {
+        // A start beyond EOF removes nothing and must NOT append the replacement —
+        // the handler surfaces this as INVALID_PARAMS.
+        let lines = v(&["a", "b"]);
+        let (out, removed, _, _) = apply_replace_lines(&lines, 5, 9, &v(&["X"]));
+        assert_eq!(out, lines);
+        assert_eq!(removed, 0);
     }
 
     // ── resolve_expected (blank-line anchor sentinel) ─────────────────────────

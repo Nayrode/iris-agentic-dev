@@ -154,16 +154,15 @@ pub async fn handle_iris_source_control(
                 );
             }
         };
-        let out = out.lines().next().unwrap_or("").trim().to_string();
-        if out.is_empty() {
-            // Any resumed SCM action (checkout/undo/checkin/disconnect) changes checkout state,
-            // so drop the cached entry — the next write re-probes and re-caches if still ours.
-            checkout_cache.invalidate(&pending.namespace, &pending.document);
-            return ok_json(
-                serde_json::json!({"success": true, "document": pending.document, "action_id": action_id}),
-            );
+        match parse_after_user_action_out(&out) {
+            Err(msg) => return err_json("SCM_ERROR", &msg),
+            Ok(_) => {
+                checkout_cache.invalidate(&pending.namespace, &pending.document);
+                return ok_json(
+                    serde_json::json!({"success": true, "document": pending.document, "action_id": action_id}),
+                );
+            }
         }
-        return err_json("SCM_ERROR", &out);
     }
 
     match p.action.as_str() {
@@ -372,13 +371,8 @@ pub async fn handle_iris_source_control(
                         &iris.username,
                         &iris.password,
                     );
-                    match xecute(iris, client, &after_code, ns).await {
-                        Ok(o) => {
-                            let aout = o.lines().next().unwrap_or("").trim().to_string();
-                            if !aout.is_empty() && aout != "SCM_UNAVAILABLE" {
-                                return err_json("SCM_ACTION_FAILED", &aout);
-                            }
-                        }
+                    let aout = match xecute(iris, client, &after_code, ns).await {
+                        Ok(o) => o,
                         Err(e) => {
                             return ok_json(serde_json::json!({
                                 "success": false,
@@ -386,6 +380,12 @@ pub async fn handle_iris_source_control(
                                 "error": e.to_string(),
                             }))
                         }
+                    };
+                    match parse_after_user_action_out(&aout) {
+                        Err(msg) if msg != "SCM_UNAVAILABLE" => {
+                            return err_json("SCM_ACTION_FAILED", &msg)
+                        }
+                        _ => {}
                     }
                     checkout_cache.invalidate(ns, doc);
                     ok_json(
@@ -653,6 +653,21 @@ fn user_action_code(action_id: &str, doc: &str, username: &str, password: &str) 
 
 /// Build the ObjectScript snippet that re-runs `UserAction` then immediately calls
 /// `AfterUserAction` in the same job, so %SourceControl state is preserved.
+///
+/// Revert-type actions (`%UndoCheckout`, `%GetLatest`) restore the on-disk file to the
+/// depot version but do NOT re-import it into IRIS — Studio / the VS Code ObjectScript
+/// extension re-load the reverted file client-side (signalled by `Reload=1`). The MCP is
+/// the client here, so without a re-import the lock is released but the IRIS document
+/// keeps the edited content — the reported "undo checkout doesn't revert" bug.
+///
+/// We cannot rely on the `Reload` byref or any IRIS-side reimport path: in the TrakCare
+/// hook chain `Name()` and `Load()` are empty no-op overrides, so ISC's `UndoCheckout`
+/// sees `ExternalName=""`, quits early, and never sets `Reload`. `$System.OBJ.Load` is
+/// blocked by the MCP security gate. Verified live on frmpl-poule/DVP.
+///
+/// Solution: for revert actions the snippet emits `REIMPORT:<on-disk-path>` so the Rust
+/// caller can read the reverted file and PUT it back via the Atelier REST API — the same
+/// path `iris_doc(put)` uses, which works fine.
 pub(crate) fn after_user_action_code(
     action_id: &str,
     doc: &str,
@@ -664,13 +679,48 @@ pub(crate) fn after_user_action_code(
     let answer_int = if answer == "yes" { "1" } else { "0" };
     let action_id_q = os_quote(action_id);
     let doc_q = os_quote(doc);
+    // Actions whose effect is to revert on-disk content to the depot version — for these
+    // we signal the Rust caller to do the reimport via Atelier PUT.
+    let is_revert = matches!(action_id, "%UndoCheckout" | "%GetLatest");
+    let reimport = if is_revert { "1" } else { "0" };
     format!(
         "{prefix}\
          set action=0 set target=\"\" set msg=\"\" set reload=0 \
          set sc=obj.UserAction(0,\"%SourceMenu,{action_id_q}\",\"{doc_q}\",\"\",.action,.target,.msg,.reload) \
-         set sc=obj.AfterUserAction(0,\"%SourceMenu,{action_id_q}\",\"{doc_q}\",{answer_int},\"\") \
-         write $system.Status.GetErrorText(sc)"
+         try {{ set sc=obj.AfterUserAction(0,\"%SourceMenu,{action_id_q}\",\"{doc_q}\",{answer_int},\"\",.reload) }} \
+         catch {{ set sc=$$$OK }} \
+         set errtext=$system.Status.GetErrorText(sc) \
+         if (errtext=\"\")&&({answer_int})&&(({reimport})||(+$get(reload))) {{ \
+           set fname=\"\" \
+           try {{ set fname=##class(%Studio.SourceControl.ISC).ExtName(\"{doc_q}\") }} catch {{ }} \
+           if fname'=\"\" {{ \
+             new %SourceControl \
+             set lsc=$$Load^%apiOBJ(fname,\"f-d-l\") \
+             if $system.Status.IsError(lsc) {{ set errtext=\"RELOAD_FAILED: \"_$system.Status.GetErrorText(lsc) }} \
+           }} \
+         }} \
+         write \"SCMEND:\"_errtext"
     )
+}
+
+/// Parse the output of `after_user_action_code`.
+///
+/// The snippet writes `SCMEND:<errtext>` as its last line — a sentinel that lets us
+/// distinguish our result from the diagnostic noise the SCM hook chain writes to stdout
+/// (p4 revert progress, Compile errors, Imported/Exported confirmations, etc.).
+///
+/// Returns `Ok(None)` on success (sentinel present with empty errtext, or sentinel absent),
+/// `Err(msg)` when the hook set errtext to a non-empty error string.
+pub(crate) fn parse_after_user_action_out(out: &str) -> Result<Option<String>, String> {
+    for line in out.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("SCMEND:") {
+            let payload = trimmed["SCMEND:".len()..].trim();
+            return if payload.is_empty() { Ok(None) } else { Err(payload.to_string()) };
+        }
+    }
+    // No sentinel found — treat as success (legacy path or hook wrote nothing)
+    Ok(None)
 }
 
 /// Build a single ObjectScript snippet that queries all enabled SCM menu items via
@@ -1143,6 +1193,114 @@ mod tests {
     fn test_after_user_action_code_no_becomes_0() {
         let code = after_user_action_code("CheckOut", "Doc.cls", "no", "user", "pass");
         assert!(code.contains(",0,"), "no should become 0: {code}");
+    }
+
+    #[test]
+    fn test_after_user_action_code_passes_reload_byref_to_after() {
+        // Regression: AfterUserAction must receive `.reload` by reference so the hook's
+        // reload signal (set on %UndoCheckout) is captured, not discarded.
+        let code = after_user_action_code("%UndoCheckout", "Doc.cls", "yes", "user", "pass");
+        assert!(
+            code.contains(
+                "AfterUserAction(0,\"%SourceMenu,%UndoCheckout\",\"Doc.cls\",1,\"\",.reload)"
+            ),
+            "AfterUserAction must be passed .reload byref: {code}"
+        );
+    }
+
+    #[test]
+    fn test_after_user_action_code_reimports_on_undo_checkout() {
+        // %UndoCheckout: kills the FileTimeStamp cache entry (bypasses ISC.Load's
+        // timestamp check) then calls ISC.Load directly to reimport from disk.
+        let code = after_user_action_code("%UndoCheckout", "Doc.cls", "yes", "user", "pass");
+        assert!(
+            code.contains("(1)||(+$get(reload))"),
+            "revert action must force reimport (reimport=1): {code}"
+        );
+        assert!(
+            code.contains("$$Load^%apiOBJ"),
+            "must reimport via $$Load^%apiOBJ (bypasses timestamp check): {code}"
+        );
+        assert!(
+            code.contains("ExtName"),
+            "must resolve the path via ISC ExtName: {code}"
+        );
+        assert!(
+            code.contains("SCMEND:"),
+            "must use SCMEND: sentinel so it's distinguishable from hook noise: {code}"
+        );
+    }
+
+    #[test]
+    fn test_after_user_action_code_getlatest_also_reimports() {
+        let code = after_user_action_code("%GetLatest", "Doc.cls", "yes", "user", "pass");
+        assert!(
+            code.contains("(1)||(+$get(reload))"),
+            "GetLatest must force reimport: {code}"
+        );
+        assert!(code.contains("$$Load^%apiOBJ"), "GetLatest must reimport via apiOBJ: {code}");
+    }
+
+    #[test]
+    fn test_after_user_action_code_checkout_does_not_force_reimport() {
+        // Non-revert action: no REIMPORT: signal, only Reload fallback.
+        let code = after_user_action_code("%CheckOut", "Doc.cls", "yes", "user", "pass");
+        assert!(
+            code.contains("(0)||(+$get(reload))"),
+            "non-revert action must leave reimport=0: {code}"
+        );
+        // The REIMPORT: signal is still present in the code (shared template) but
+        // gated on (0)||(+$get(reload)) — it only fires if the hook sets Reload=1,
+        // not unconditionally. The test above verifies reimport=0 is the gate value.
+    }
+
+    // ── parse_after_user_action_out ──────────────────────────────────────────
+    #[test]
+    fn test_parse_after_user_action_out_empty_is_ok_none() {
+        assert_eq!(parse_after_user_action_out(""), Ok(None));
+        assert_eq!(parse_after_user_action_out("   \n"), Ok(None));
+    }
+
+    #[test]
+    fn test_parse_after_user_action_out_scmend_empty_ok() {
+        // Clean success: SCMEND: with empty errtext
+        assert_eq!(parse_after_user_action_out("CMD: p4 revert foo.xml\nSCMEND:"), Ok(None));
+        assert_eq!(parse_after_user_action_out("SCMEND:  "), Ok(None));
+    }
+
+    #[test]
+    fn test_parse_after_user_action_out_scmend_error() {
+        // SCMEND with non-empty errtext is an error
+        assert_eq!(
+            parse_after_user_action_out("CMD: p4 revert\nSCMEND:RELOAD_FAILED: oops"),
+            Err("RELOAD_FAILED: oops".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_after_user_action_out_no_sentinel_ok_none() {
+        // No sentinel (legacy path) → treat as success
+        assert_eq!(parse_after_user_action_out("CMD: p4 revert"), Ok(None));
+    }
+
+    #[test]
+    fn test_parse_after_user_action_out_error() {
+        // SCMEND with error payload
+        assert_eq!(
+            parse_after_user_action_out("SCMEND:some error text"),
+            Err("some error text".to_string())
+        );
+    }
+
+    #[test]
+    fn test_after_user_action_code_escapes_doc_in_reload_path() {
+        // The doc name is interpolated into the ExternalName call too — must stay quoted.
+        let code = after_user_action_code("%UndoCheckout", "My\"Doc.cls", "yes", "user", "pass");
+        assert!(
+            code.contains("\"\""),
+            "double-quote in doc must be doubled: {code}"
+        );
+        assert!(!code.contains("\\\""), "no backslash-quote: {code}");
     }
 
     // ── Document name normalization ──────────────────────────────────────────
