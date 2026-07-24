@@ -695,7 +695,7 @@ pub(crate) fn after_user_action_code(
            try {{ set fname=##class(%Studio.SourceControl.ISC).ExtName(\"{doc_q}\") }} catch {{ }} \
            if fname'=\"\" {{ \
              new %SourceControl \
-             set lsc=$$Load^%apiOBJ(fname,\"f-d-l\") \
+             set lsc=$$Load^%apiOBJ(fname,\"fck-l\") \
              if $system.Status.IsError(lsc) {{ set errtext=\"RELOAD_FAILED: \"_$system.Status.GetErrorText(lsc) }} \
            }} \
          }} \
