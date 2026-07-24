@@ -579,6 +579,14 @@ async fn do_write(
              If a previous call lost its arguments, resend with name/content set explicitly.",
         );
     }
+    // Compile-time code execution gate: block CodeMode = objectgenerator/expression/call.
+    // Fires on the FULL assembled content, so multi-call assembly tricks are moot.
+    if let Some(err) =
+        crate::policy::code_edit_gate::check_compile_time_code_mode(content, name)
+    {
+        return ok_json(err);
+    }
+
     // I-3: strip Storage blocks — IRIS 2025.1 UDL parser (#5559) fails on Storage XML.
     // IRIS will auto-generate correct storage on first compile.
     // strip_storage_blocks handles the no-block case cheaply (single pass, no alloc).
